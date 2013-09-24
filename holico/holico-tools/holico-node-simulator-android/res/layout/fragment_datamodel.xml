@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/data_model"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    tools:context=".NodeDetailFragment_Shutter" >
+
+    <TextView
+        android:id="@+id/node_title"
+        style="?android:attr/textAppearanceLarge"
+        android:layout_width="fill_parent"
+        android:layout_height="0dip"
+        android:layout_marginLeft="10dp"
+        android:layout_marginTop="10dp"
+        android:layout_weight="2"
+        android:background="@color/gray"
+        android:enabled="false"
+        android:gravity="right"
+        android:padding="10dp"
+        android:text="@string/name"
+        android:textColor="@color/lightgray"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:id="@+id/scrollView1"
+        android:layout_width="match_parent"
+        android:layout_height="fill_parent" >
+
+        <EditText
+            android:id="@+id/data_model_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ems="10"
+            android:enabled="false"
+            android:inputType="textMultiLine"
+            android:textColor="@color/darkgray"
+            android:textSize="15sp" />
+
+    </ScrollView>
+    
+</LinearLayout>

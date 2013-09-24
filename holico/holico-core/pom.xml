@@ -1,0 +1,22 @@
+<project xmlns="http://maven.apache.org/POM/3.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.francetelecom.rd.holico</groupId>
+        <artifactId>holico</artifactId>
+        <version>0.4-SNAPSHOT</version>
+    </parent>
+    	
+	<artifactId>holico-core</artifactId>
+	<packaging>pom</packaging>
+    <name>HoLiCo Connector Core</name>
+    
+	<modules>
+		<module>hlc-connector-interface</module>
+		<module>hlc-connector-impl</module>
+	</modules>
+
+</project>
+

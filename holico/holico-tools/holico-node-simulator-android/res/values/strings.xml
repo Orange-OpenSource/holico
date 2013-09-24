@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">NodesSimulator</string>
+    <string name="title_device_detail">Device Detail</string>
+    <string name="node_info">node information</string>
+    <string name="name">name : </string>
+    <string name="manufacturer">manufacturer : </string>
+    <string name="node_services">node services</string>
+    <string name="node_resources">node resources :</string>
+    <string name="publication_switch">published on bus</string>
+    <string name="yes">yes</string>
+    <string name="no">no</string>
+    <string name="node_publication">node publication</string>
+    <string name="oui">manufacturer OUI :</string>
+    <string name="version">version : </string>
+
+</resources>

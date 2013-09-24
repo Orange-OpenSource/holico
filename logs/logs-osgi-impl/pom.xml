@@ -1,0 +1,70 @@
+<project xmlns="http://maven.apache.org/POM/3.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+        <groupId>com.francetelecom.rd.holicologs</groupId>
+        <artifactId>holico-logs</artifactId>
+		<version>0.1-SNAPSHOT</version>	
+	</parent>
+
+	<artifactId>logs-osgi-impl</artifactId>
+	<packaging>jar</packaging>
+	<name>Holico Logs - implementation with osgi logs  </name>
+
+	<dependencies>
+		<dependency>
+			<artifactId>logs-facade</artifactId>
+			<groupId>com.francetelecom.rd.holicologs</groupId>
+			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>3.8.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.osgi</groupId>
+			<artifactId>core</artifactId>
+			<version>4.3.0</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+		    <!--  Contains declaration for declarative service and log service -->
+			<groupId>org.osgi</groupId>
+			<artifactId>osgi_R4_compendium</artifactId>
+			<version>1.0</version>
+			<scope>compile</scope>
+		</dependency>
+	</dependencies>
+	
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <extensions>true</extensions>
+                <configuration>
+                    <instructions>
+                        <Bundle-SymbolicName>
+                            ${project.artifactId}
+                        </Bundle-SymbolicName>
+                        <Service-Component>
+                            OsgiLogComponent;
+                            immediate:=true;
+                            activate:=activate;
+                            deactivate:=deactivate;
+                            log=org.osgi.service.log.LogService;
+                            implementation:=com.francetelecom.rd.agora.logs.impl.OsgiLogComponent
+                        </Service-Component>
+             
+                         <Export-Package>com.francetelecom.rd.agora.logs.impl</Export-Package>
+                    </instructions>
+                </configuration>
+            </plugin>            
+        </plugins>
+    </build>	
+
+</project>	

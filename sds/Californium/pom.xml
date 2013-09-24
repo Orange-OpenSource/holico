@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<project
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+	xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+
+<!-- 
+This is a custom modified version of californium
+We must switch back to the original version as soon as possible !!
+-->
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>ch.ethz.inf.vs</groupId>
+	<version>0.13.0-SNAPSHOT</version>
+	<artifactId>californium-sds</artifactId>
+	<packaging>jar</packaging>
+
+	<name>CustomSdsCalifornium </name>
+	<description>Californium (Cf) CoAP framework in Java - modified for sds</description>
+
+	<properties>
+		<skip.reporting>true</skip.reporting>	
+	</properties>
+	
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>2.3.2</version>
+				<configuration>
+					<source>1.6</source>
+					<target>1.6</target>
+					<encoding>${project.build.sourceEncoding}</encoding>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>2.4.2</version>
+				<configuration>
+					<skipTests>true</skipTests>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+
+<!-- Remove original parent as we do not want to compile all californium distribution -->
+	<!-- <parent> <groupId>ch.ethz.inf.vs</groupId> <artifactId>cf-root</artifactId> 
+		<version>0.13.0-SNAPSHOT</version> </parent> -->
+
+<!-- Add our own distribution management info to deploy this custiom californium in nexus -->
+	<distributionManagement>
+		<repository>
+			<uniqueVersion>false</uniqueVersion>
+			<id>internal.snapshot</id>
+			<name>Orange internal Repository</name>
+			<url>http://p-malivebox:8080/nexus-2.3.0-04/content/repositories/com.orange.internal./</url>
+			<layout>default</layout>
+		</repository>
+		<snapshotRepository>
+			<id>deployment</id>
+			<name>Orange internal Snapshot Repository</name>
+			<url>http://p-malivebox:8080/nexus-2.3.0-04/content/repositories/com.orange.internal.snapshot/</url>
+		</snapshotRepository>
+	</distributionManagement>
+
+
+	<dependencies>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.8.1</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpcore-nio</artifactId>
+			<version>4.2.1</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.2.1</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.google.guava</groupId>
+			<artifactId>guava</artifactId>
+			<version>13.0</version>
+		</dependency>
+	</dependencies>
+</project>

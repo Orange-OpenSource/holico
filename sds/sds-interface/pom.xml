@@ -1,0 +1,71 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<parent>
+		<groupId>com.francetelecom.rd.sds</groupId>
+        <artifactId>shared-data-state</artifactId>
+		<version>0.4-SNAPSHOT</version>
+	</parent>
+
+	<artifactId>sds-interface</artifactId>
+	<packaging>bundle</packaging>
+
+	<properties>
+		<skip.reporting>false</skip.reporting>	
+		<reporting.conf.dir>${basedir}/../confs</reporting.conf.dir>
+	</properties>
+	
+	<dependencies>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.felix</groupId>
+				<artifactId>maven-bundle-plugin</artifactId>
+				<extensions>true</extensions>
+				<configuration>
+					<instructions>
+						<Bundle-SymbolicName>
+							${project.artifactId}
+						</Bundle-SymbolicName>
+						<Export-Package>
+							com.francetelecom.rd.sds
+						</Export-Package>
+					</instructions>
+				</configuration>
+			</plugin>
+            <!-- ======================================================= -->
+            <!-- Per module javadoc generation -->
+            <!-- ======================================================= -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${maven-javadoc-plugin.version}</version>
+                <configuration>
+                    <doctitle>SDS Interface</doctitle>
+                    <windowtitle>SDS Interface</windowtitle>
+                    <splitindex>true</splitindex>
+                    <author>true</author>
+                    <use>true</use>
+                    <version>true</version>
+                    <stylesheetfile>${basedir}/src/main/javadoc/stylesheet.css</stylesheetfile>
+                    <show>public</show>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>			
+		</plugins>
+	</build>
+
+</project>
+
+
+

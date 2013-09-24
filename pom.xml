@@ -1,0 +1,214 @@
+<project xmlns="http://maven.apache.org/POM/3.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>com.francetelecom.rd</groupId>
+	<artifactId>HolicoParent</artifactId>
+	<version>1.0.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>Holico Parent Pom</name>
+    
+	<modules>
+		<module>logs</module>
+		<module>sds</module>
+        <module>holico</module>
+	</modules>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		
+		<!-- Maven dependencies -->
+		<maven.android.plugin.version>3.6.0</maven.android.plugin.version>
+		<bundle.maven.plugin.version>2.3.7</bundle.maven.plugin.version>
+		<maven-javadoc-plugin.version>2.9</maven-javadoc-plugin.version>
+		<maven-checkstyle-plugin.version>2.9.1</maven-checkstyle-plugin.version>
+		<findbugs-maven-plugin.version>2.5.2</findbugs-maven-plugin.version>
+		<maven-jxr-plugin.version>2.3</maven-jxr-plugin.version>
+		<maven-pmd-plugin.version>2.7.1</maven-pmd-plugin.version>
+		<maven-project-info-reports-plugin.version>2.6
+		</maven-project-info-reports-plugin.version>
+		<maven-surefire-report-plugin.version>2.13
+		</maven-surefire-report-plugin.version>
+		<compiler.maven.plugin.version>2.5.1</compiler.maven.plugin.version>
+		
+		<slf4j-api.version>1.7.2</slf4j-api.version>
+		
+		<!-- Android Dependencies -->
+		<api.platform>16</api.platform>
+		<annotations.version>4.1.1.4</annotations.version>
+		<android.version>4.1.1.4</android.version>
+		<support-v4-android.version>r11</support-v4-android.version>
+		
+		<!--  Default values: do not skip reporting  -->
+		<skip.reporting>true</skip.reporting>
+		<profile.skip.reporting>false</profile.skip.reporting>
+	</properties>
+
+	<build>	 
+	    <!-- Plugin definition for all sub projects
+		     will be inherited by project using these plugins (but the plugin still neeed to 
+			 be activated at the project level ! -->
+	    <pluginManagement>
+			<plugins>
+			    <!-- Plugin for android projects -->
+				<plugin>
+					<groupId>com.jayway.maven.plugins.android.generation2</groupId>
+					<artifactId>android-maven-plugin</artifactId>
+					<version>${maven.android.plugin.version}</version>
+					<inherited>true</inherited>
+					<configuration>
+						<androidManifestFile>${project.basedir}/AndroidManifest.xml</androidManifestFile>
+						<resourceDirectory>${project.basedir}/res</resourceDirectory>
+						<sdk>
+							<platform>${api.platform}</platform>
+						</sdk>
+						<undeployBeforeDeploy>true</undeployBeforeDeploy>
+					</configuration>
+				</plugin>
+				  <!-- This plugin provides osgi bundle generation and
+   				  automatic bundle deplyement to an OBR -->
+				<plugin>
+					<groupId>org.apache.felix</groupId>
+					<artifactId>maven-bundle-plugin</artifactId>
+					<version>${bundle.maven.plugin.version}</version>
+					<extensions>true</extensions>
+					<configuration>
+						<instructions>
+							<Bundle-SymbolicName>
+								${project.artifactId}
+							</Bundle-SymbolicName>
+						</instructions>
+						<!--obrRepository>file:///var/www/html/obr/repository.xml</obrRepository>-->
+					</configuration>
+				</plugin>				  
+				<plugin>
+					<!-- Default java version is 1.4, for osgi
+					     This can be overridden to 1.6 for android or desktop projects-->
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>${compiler.maven.plugin.version}</version>
+					<inherited>true</inherited>
+					<configuration>
+						<source>1.6</source>
+						<target>1.6</target>
+					</configuration>
+				</plugin>
+			</plugins>		
+		</pluginManagement>		
+	</build>
+
+	<reporting>
+		<excludeDefaults>false</excludeDefaults>
+		<plugins>
+			<!-- ======================================================= -->
+			<!-- Reports configuration for the web site. -->
+			<!-- ======================================================= -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-project-info-reports-plugin</artifactId>
+				<version>${maven-project-info-reports-plugin.version}</version>
+				<reportSets>
+					<reportSet>
+						<reports>
+							<report>index</report>
+							<report>dependencies</report>
+							<report>scm</report>
+							<report>plugins</report>
+							<report>summary</report>
+						</reports>
+					</reportSet>
+				</reportSets>
+				<configuration>
+					<!-- Avoid the dependency plugin to download again all jars from repositories 
+						just to report the following informations -->
+					<dependencyDetailsEnabled>false</dependencyDetailsEnabled>
+					<dependencyLocationsEnabled>false</dependencyLocationsEnabled>
+				</configuration>
+			</plugin>
+			<!-- ======================================================= -->
+			<!-- Per module javadoc generation -->
+			<!-- ======================================================= -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<version>${maven-javadoc-plugin.version}</version>
+				<configuration>
+					<show>protected</show>
+				</configuration>
+			</plugin>
+			<!-- ======================================================= -->
+			<!-- HTML based, cross-reference version of Java source code -->
+			<!-- ======================================================= -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jxr-plugin</artifactId>
+				<version>${maven-jxr-plugin.version}</version>
+				<inherited>true</inherited>
+			</plugin>
+			<!-- ======================================================= -->
+			<!-- PMD Static analysis of code -->
+			<!-- ======================================================= -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-pmd-plugin</artifactId>
+				<version>${maven-pmd-plugin.version}</version>
+				<configuration>
+					<linkXref>true</linkXref>
+					<sourceEncoding>utf-8</sourceEncoding>
+					<minimumTokens>100</minimumTokens>
+					<targetJdk>1.4</targetJdk>
+					<failOnViolation>false</failOnViolation>
+				</configuration>
+				<inherited>true</inherited>
+			</plugin>
+			<!--
+			 ======================================================= 
+			-->
+			<!--  FindBugs Static analysis of code  -->
+			<!--
+			 ======================================================= 
+			-->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>findbugs-maven-plugin</artifactId>
+				<version>${findbugs-maven-plugin.version}</version>
+				<configuration>
+					<xmlOutput>true</xmlOutput>
+					<failOnError>false</failOnError>
+					<excludeFilterFile>${reporting.conf.dir}/findbugs-exclude.xml</excludeFilterFile>
+					<skip>${skip.reporting}</skip>
+				</configuration>
+				<inherited>true</inherited>
+			</plugin>
+			<!--
+			 ======================================================= 
+			-->
+			<!--  Checkstyle Static analysis of code  -->
+			<!--
+			 ======================================================= 
+			-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-checkstyle-plugin</artifactId>
+				<version>${maven-checkstyle-plugin.version}</version>
+				<configuration>
+					<headerLocation/>
+					<enableRulesSummary>true</enableRulesSummary>
+					<suppressionsLocation>
+					file:///${reporting.conf.dir}/checkstyle_suppressions.xml
+					</suppressionsLocation>
+					<configLocation>file:///${reporting.conf.dir}/checkstyle_includes.xml</configLocation>
+					<!--
+					 Trick used to allow SuppressFilter configuration in the checkstyle_includes.xml 
+											file (for Eclipse) 
+					-->
+					<propertyExpansion>samedir=${reporting.conf.dir}/</propertyExpansion>
+					<skip>${skip.reporting}</skip>
+				</configuration>
+				<inherited>true</inherited>
+			</plugin>
+		</plugins>
+	</reporting>
+	
+</project>
+
