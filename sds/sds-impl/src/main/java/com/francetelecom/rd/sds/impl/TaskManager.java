@@ -232,7 +232,7 @@ class TaskManager extends Thread
          lock.lock();
          try
          {
-            Runnable toSend = null;
+            Runnable toRun = null;
             boolean toSignal = false;
             long waitTime = 0; // différent de 0 si état transitoire
             if (timeout != 0)
@@ -301,10 +301,10 @@ class TaskManager extends Thread
                }
                if (iTask >= 0)
                {
-                  toSend = (Runnable)tasks.remove(iTask);
+                  toRun = (Runnable)tasks.remove(iTask);
                }
             }
-            if ((toSend == null) && !toSignal)
+            if ((toRun == null) && !toSignal)
             {
                // on recherche les éventuelles retransmissions nécessaires (possibles en état transitoires)
                long now = System.currentTimeMillis();
@@ -314,15 +314,15 @@ class TaskManager extends Thread
                   ExpectedData req = (ExpectedData)it.next();
                   if ((req instanceof SendTask) && (now >= ((SendTask)req).getTimeout()))
                   {
-                     toSend = (SendTask)req;
+                     toRun = (SendTask)req;
                      break;
                   }
                }
-               if ((toSend == null) && (rootUpdateSent != null) && (waitTime == 0)) // retransmissions de messages de données
+               if ((toRun == null) && (rootUpdateSent != null) && (waitTime == 0)) // retransmissions de messages de données
                {
                   if (now >= rootUpdateSent.getTimeout())
                   {
-                     toSend = rootUpdateSent;
+                     toRun = rootUpdateSent;
                      if (expectedPeersAck.isEmpty())
                      {
                         rootUpdateSent = null;
@@ -339,15 +339,15 @@ class TaskManager extends Thread
                   }
                }
             }
-            if (toSend != null)
+            if (toRun != null)
             {
-               if ( !(toSend instanceof SynchroTask) // stabilité traitée précisément dans synchronize()
-                 && !((toSend instanceof SendTask) && (((SendTask)toSend).expectedRevision != -1)) ) // requête, état transitoire possible
+               if ( !(toRun instanceof SynchroTask) // stabilité traitée précisément dans synchronize()
+                 && !((toRun instanceof SendTask) && (((SendTask)toRun).expectedRevision != -1)) ) // requête, état transitoire possible
                {
                   DirectoryImpl.ensureStability();
                   timeout = 0;
                }
-               toSend.run();
+               toRun.run();
                if ((timeout !=0) && DirectoryImpl.isInStableState()) // on sort d'un état transitoire
                {
                   logger.info("NORMAL EXIT OF TRANSITION STATE (2)");
@@ -404,19 +404,32 @@ class TaskManager extends Thread
       while (it.hasNext())
       {
          ExpectedData req = (ExpectedData)it.next();
-         /*found = newReq.getPathname().equals(req.getPathname()) && (newReq.getExpectedRevision() == req.getExpectedRevision());
-         if (found)
-         {
-            toAdd = (req instanceof ResponseToRequestForDataTask) && (newReq instanceof SendTask); // SendTask remplace ResponseToRequestForDataTask
-            if (toAdd) { it.remove(); }
-            break;
-         }*/
          found = newReq.getPathname().equals(req.getPathname());
          if (found)
          {
-            toAdd = (newReq instanceof SendTask) || (req instanceof ResponseToRequestForDataTask); // on ne remplace pas des SendTask par des ResponseToRequest
-            if (toAdd) { it.remove(); }
-            break;
+            found = (newReq.getExpectedRevision() == req.getExpectedRevision());
+            if (newReq instanceof SendTask)
+            {
+               if (req instanceof SendTask)
+               {
+                  toAdd = !found;
+                  if (toAdd) { it.remove(); } // 1 seul SendTask à la fois
+                  break;
+               }
+               else // (req instanceof ResponseToRequestForDataTask)
+               {
+                  if (found) { it.remove(); } // SendTask remplace ResponseToRequest sur même rev (on ne saurait répondre)
+                  found = false;
+               }
+            }
+            else // (newReq instanceof ResponseToRequestForDataTask)
+            {
+               if (found)
+               {
+                  toAdd = false; // si (req instanceof SendTask), on laisse tomber la requête ; si (req instanceof ResponseToRequestForDataTask), elle est déjà enregistrée
+                  break;
+               }
+            }
          }
       }
       if (toAdd)

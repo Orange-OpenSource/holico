@@ -147,7 +147,6 @@ public class DirectoryTest extends TestCase {
 		}	
 	}
 
-	@SuppressWarnings("unused")
 	public void test_newDataNoOverwrite() throws Exception {
 
 		// create a new boolean data
@@ -167,7 +166,6 @@ public class DirectoryTest extends TestCase {
 		}		
 	}
 
-	@SuppressWarnings("unused")
 	public void test_deleteData() throws Exception {
 
 		// create a new boolean data
@@ -203,7 +201,6 @@ public class DirectoryTest extends TestCase {
 
 	// ==============================================================================
 
-	@SuppressWarnings("unused")
 	public void test_getDirectory() throws Exception 
 	{
 		// create subDir
@@ -232,7 +229,6 @@ public class DirectoryTest extends TestCase {
 		}		
 	}
 	
-	@SuppressWarnings("unused")
 	public void test_getParameter() throws Exception {
 
 		// create subDir
@@ -296,7 +292,7 @@ public class DirectoryTest extends TestCase {
 		assertNotNull(myData1);
 
 		// set a new value
-		hsRoot.setParameterValue(paramPath, true);
+		hsRoot.setParameterValue(paramPath, Boolean.TRUE);
 
 		// retreive parameter as boolean
 		boolean paramBool = hsRoot.getParameterBooleanValue(paramPath);
@@ -305,7 +301,7 @@ public class DirectoryTest extends TestCase {
 		// set a new value with wrong path
 		try 
 		{			
-			hsRoot.setParameterValue(paramPath + "_wrong", true);
+			hsRoot.setParameterValue(paramPath + "_wrong", Boolean.TRUE);
 			assertTrue(false);
 		} 
 		catch(Exception e)
@@ -317,7 +313,7 @@ public class DirectoryTest extends TestCase {
 		// set a new value with wrong type
 		try 
 		{			
-			hsRoot.setParameterValue(paramPath, 0);
+			hsRoot.setParameterValue(paramPath, new Integer(0));
 			assertTrue(false);
 		} 
 		catch(Exception e)
@@ -415,7 +411,6 @@ public class DirectoryTest extends TestCase {
 
 			int nbOfNotif = 0;
 			
-			@Override
 			public void valueChange(EventObject evt) {
 				nbOfNotif++;
 			}
@@ -459,7 +454,6 @@ public class DirectoryTest extends TestCase {
 
 			int nbOfNotif = 0;
 			
-			@Override
 			public void valueChange(EventObject evt) {
 				nbOfNotif++;
 			}
@@ -509,7 +503,6 @@ public class DirectoryTest extends TestCase {
 
 			int nbOfNotif = 0;
 			
-			@Override
 			public void valueChange(EventObject evt) {
 				nbOfNotif++;
 			}

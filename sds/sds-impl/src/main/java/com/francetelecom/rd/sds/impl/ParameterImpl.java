@@ -232,33 +232,29 @@ public class ParameterImpl extends DataImpl implements Parameter
     *
     * @return PENDING_FLAG|0 + MODIFIED_FLAG|0 + DIR_PARAM_FLAG|0
     */
-   protected int _replace(DataImpl received)
+   protected void _replace(DataImpl received)
    {
-      int res = 0;
       if ((received instanceof ParameterImpl) && ((received.value != null) || (value == null)))
       {
          value = received.value;
          type = received.type;
-         if ((revision != 0) && (received.revision != revision)) { res = MODIFIED_FLAG; }
+         if ((revision != 0) && (received.revision != revision)) { synchroState |= MODIFIED_FLAG; }
          setLaterRevision(received.revision, received.previousRevisions);
          if ((value == null) && !ignored)
          {
-            requested = true;
-            res |= PENDING_FLAG;
+            synchroState |= PENDING_FLAG | REQUESTED_FLAG;
             TaskManager.addTask(new SendTask(getPathname(), revision, 0)); // interroge pour obtenir la valeur
          }
       }
       else if (received.value == null) // (received instanceof DirectoryImpl) || received.value == null ET value != null (donc !ignored)
       {
          TaskManager.addTask(new SendTask(getPathname(), received.revision, 0)); // interroge pour obtenir la valeur
-         requested = true;
-         res = PENDING_FLAG;
+         synchroState |= PENDING_FLAG | REQUESTED_FLAG;
       }
       else // received instanceof DirectoryImpl && (received.value != null)
       {
-         res = DIR_PARAM_FLAG;
+         synchroState |= DIR_PARAM_FLAG;
       }
-      return res;
    }
 
    /*
@@ -266,17 +262,15 @@ public class ParameterImpl extends DataImpl implements Parameter
     *
     * @return 0 or PENDING_FLAG (synchroState initialized to 0)
     */
-   protected int _relocate()
+   protected void _relocate()
    {
       name = null;
       parent = null;
       if ((value == null) && !ignored)
       {
-         synchroState = PENDING_FLAG;
-         requested = true;
+         synchroState = PENDING_FLAG | REQUESTED_FLAG;
          TaskManager.addTask(new SendTask(getPathname(), revision, 0)); // interroge pour obtenir la valeur
       }
-      return synchroState;
    }
 
    /*
@@ -291,12 +285,12 @@ public class ParameterImpl extends DataImpl implements Parameter
     *
     *  Condition :  (value != null) && (received.value != null)
     */
-   protected int _merge(DataImpl received, long lag) throws DataAccessException
+   protected void _merge(DataImpl received, long lag) throws DataAccessException
    {
-      int cmp = 0;
+      synchroState = 0;
       if (received instanceof DirectoryImpl) // on prend systématiquement le Directory, considéré comme plus récent
       {
-         cmp = 1 | DIR_PARAM_FLAG;
+         synchroState = 1 | DIR_PARAM_FLAG;
       }
       else if ((received.type == type) && (received.value.equals(value))) // même valeur (et même type)
       {
@@ -313,15 +307,14 @@ public class ParameterImpl extends DataImpl implements Parameter
       }
       else if (received.timestamp+lag > timestamp) // on choisit la valeur reçue (+ récente), choix empirique
       {
-         cmp = 1 | (received.revision < revision ? QUESTION_FLAG : 0) // devId choisi <, choix prioritaire à signaler/interroger
-                 | _replace(received);
+         synchroState = 1 | (received.revision < revision ? QUESTION_FLAG : 0); // devId choisi <, choix prioritaire à signaler/interroger
+         _replace(received);
       }
       else // la valeur locale est plus récente (ou d'égale ancienneté)
       {
          setRevisionAsPrevious(received.revision, received.previousRevisions);
-         cmp = 2;
+         synchroState = 2;
       }
-      return cmp;
    }
 
    /*

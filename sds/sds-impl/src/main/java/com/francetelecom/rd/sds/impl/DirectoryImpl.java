@@ -824,9 +824,9 @@ public class DirectoryImpl extends DataImpl implements Directory
    /*
     * Relocate the data in the local SDS + Send messages if necessary to get the inner values
     *
-    * @return 0 or PENDING_FLAG (synchroState initialized to 0)
+    * @return 0 or PENDING_FLAG or PENDING_FLAG|REQUESTED_FLAG (synchroState initialized to 0)
     */
-   protected int _relocate()
+   protected void _relocate()
    {
       name = null;
       parent = null;
@@ -834,8 +834,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       {
          if (value == null)
          {
-            synchroState = PENDING_FLAG;
-            requested = true;
+            synchroState = PENDING_FLAG | REQUESTED_FLAG;
             TaskManager.addTask(new SendTask(getPathname(), revision, 0)); // interroge pour obtenir la valeur
          }
          else // value != null
@@ -844,29 +843,27 @@ public class DirectoryImpl extends DataImpl implements Directory
             Iterator it = hashMap.keySet().iterator();
             while (it.hasNext())
             {
-               if (((DataImpl)hashMap.get(it.next()))._relocate() != 0)
-               {
-                  synchroState = PENDING_FLAG;
-               }
+               DataImpl data = (DataImpl)hashMap.get(it.next());
+               data._relocate();
+               synchroState |= data.synchroState & PENDING_FLAG;
             }
          }
       }
-      return synchroState;
    }
 
    /*
     * @param sync Résultat de la synchro sans modif ou résult après modif si modif
     */
-   private void _computeSynchro(int sync)
+   private void _computeSynchro()
    {
-      int cmp = sync & CMP_MASK;
-      boolean modified = ((sync & MODIFIED_FLAG) != 0);
-      if (((sync & PENDING_FLAG) == 0) && (cmp == 3)) // nlle révision à créer
+      int cmp = synchroState & CMP_MASK;
+      boolean modified = ((synchroState & MODIFIED_FLAG) != 0);
+      if (((synchroState & PENDING_FLAG) == 0) && (cmp == 3)) // nlle révision à créer
       {
          modified = true;
          cmp = 2; // peerRev < this (modified rev) 
       }
-      if (((cmp & 1) == 0) && !modified) // received <= this sans modif
+      if ((((cmp == 0) && (revision < peerRevision)) || (cmp == 2)) && !modified) // received <= this sans modif, si == on choisit la révision dont le devId est le plus petit
       {
          setRevisionAsPrevious(peerRevision, peerPreviousRevisions);
       }
@@ -890,33 +887,28 @@ public class DirectoryImpl extends DataImpl implements Directory
     *
     * @param sync New sync result for child to integrate
     */
-   private void _updateIfNoLongerPending(int sync)
+   private void _updateIfNoLongerPending()
    {
       // PRECOND : (value != null) && (peerRevision != 0)
-      if ((sync & PENDING_FLAG) == 0)
+      // Y a-t-il encore un fils en attente ?
+      boolean pending = false;
+      HashMap hashMap = (HashMap)value;
+      Iterator it = hashMap.keySet().iterator();
+      while (!pending && it.hasNext())
       {
-         synchroState |= sync;
-         // Y a-t-il encore un fils en attente ?
-         boolean pending = false;
-         HashMap hashMap = (HashMap)value;
-         Iterator it = hashMap.keySet().iterator();
-         while (!pending && it.hasNext())
+         String key = (String)it.next();
+         DataImpl data = (DataImpl)hashMap.get(key);
+         pending = ((data.synchroState & PENDING_FLAG) != 0);
+      }
+      if (!pending) // plus aucun fils en attente
+      {
+         synchroState &= ~PENDING_FLAG;
+         _computeSynchro();
+         synchroState = 0;
+         peerPreviousRevisions.clear();
+         if (getParent() != null)
          {
-            String key = (String)it.next();
-            DataImpl data = (DataImpl)hashMap.get(key);
-            pending = ((data.synchroState & PENDING_FLAG) != 0);
-         }
-         if (!pending) // plus aucun fils en attente
-         {
-            sync = synchroState & ~PENDING_FLAG;
-            synchroState = 0;
-            requested = false;
-            _computeSynchro(sync);
-            peerPreviousRevisions.clear();
-            if (getParent() != null)
-            {
-               parent._updateIfNoLongerPending(sync);
-            }
+            parent._updateIfNoLongerPending();
          }
       }
    }
@@ -926,9 +918,8 @@ public class DirectoryImpl extends DataImpl implements Directory
     *
     * @return PENDING_FLAG|0 + MODIFIED_FLAG|0 + DIR_PARAM_FLAG|0
     */
-   protected int _replace(DataImpl received)
+   protected void _replace(DataImpl received)
    {
-      int res = 0;
       if (received instanceof Directory)
       {
          type = received.type;
@@ -956,7 +947,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                   break;
                }
                hashMap.remove(found);
-               res |= MODIFIED_FLAG;
+               synchroState |= MODIFIED_FLAG;
             }
             // on synchronise tous les éléments restants
             Iterator it2 = hashMapRcvd.keySet().iterator();
@@ -965,44 +956,46 @@ public class DirectoryImpl extends DataImpl implements Directory
                String key = (String)it2.next();
                DataImpl elemRcvd = (DataImpl)hashMapRcvd.get(key);
                DataImpl elem = (DataImpl)hashMap.get(key);
-               if (elem != null)
+               boolean aGreffer = (elem == null);
+               if (!aGreffer)
                {
                   int cmp = elem._revcmp(elemRcvd);
                   if ((cmp == 1) || (cmp == 3)) // elemRcvd > elem (ou non comparable), sinon aucun remplacement à faire
                   {
-                     cmp = elem._replaceThisBy(elemRcvd); // on met à jour récursivement
-                     if ((cmp & DIR_PARAM_FLAG) != 0)
-                     {
-                        cmp = elemRcvd._relocate() | MODIFIED_FLAG;
-                        hashMap.put(key, elemRcvd); // remplacement d'un Directory par un Parameter ou l'inverse
-                     }
-                     res |= cmp;
+                     elem._replaceThisBy(elemRcvd); // on met à jour récursivement
+                     synchroState |= elem.synchroState & UPWARD_MASK;
+                     aGreffer = ((elem.synchroState & DIR_PARAM_FLAG) != 0);
                   }
                }
-               else
+               if (aGreffer)
                {
-                  res |= elemRcvd._relocate() | MODIFIED_FLAG;
-                  hashMap.put(key, elemRcvd); // on ajoute tout simplement, élément ajouté ds la rév plus récente
+                  elemRcvd._relocate();
+                  synchroState |= (elemRcvd.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
+                  hashMap.put(key, elemRcvd); // on ajoute tout simplement, élément ajouté ds la rév plus récente ou on remplace un dir par un param
                }
             }
-            if ((res & PENDING_FLAG) == 0) // on verifie qu'on n'a pas le flag PENDING
+            if ((synchroState & PENDING_FLAG) == 0) // on verifie qu'on n'a pas le flag PENDING
             {
                setLaterRevision(received.revision, received.previousRevisions);
-               res |= MODIFIED_FLAG;
+               synchroState |= MODIFIED_FLAG;
             }
          }
          else if (!thisEmpty) // ET received.value == null
          {
             TaskManager.addTask(new SendTask(getPathname(), received.revision, revision)); // interroge pour obtenir la valeur
-            requested = true;
-            res = PENDING_FLAG;
+            synchroState |= PENDING_FLAG | REQUESTED_FLAG;
          }
          else //thisEmpty
          {
-            res = received._relocate();
-            if ((revision != 0) && (received.revision != revision)) { res |= MODIFIED_FLAG; }
+            received._relocate();
+            synchroState |= (received.synchroState & PENDING_FLAG);
+            if ((revision != 0) && (received.revision != revision))
+            {
+               //synchroState |= (received.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
+               synchroState |= MODIFIED_FLAG;
+            }
             value = received.value; // éventuellement null
-            if (((res & PENDING_FLAG) == 0) // on verifie qu'on n'a pas le flag PENDING
+            if (((synchroState & PENDING_FLAG) == 0) // on verifie qu'on n'a pas le flag PENDING
                || (revision == 0)) // cas root non initialisée
             {
                setLaterRevision(received.revision, received.previousRevisions);
@@ -1012,14 +1005,12 @@ public class DirectoryImpl extends DataImpl implements Directory
       else if (received.value == null) // ET received instanceof Parameter
       {
          TaskManager.addTask(new SendTask(getPathname(), received.revision, revision)); // interroge pour obtenir la valeur
-         requested = true;
-         res = PENDING_FLAG;
+         synchroState |= PENDING_FLAG | REQUESTED_FLAG;
       }
       else // received instanceof Parameter
       {
-         res = DIR_PARAM_FLAG;
+         synchroState |= DIR_PARAM_FLAG;
       }
-      return res;
    }
 
    /*
@@ -1027,12 +1018,12 @@ public class DirectoryImpl extends DataImpl implements Directory
     *
     *  Condition : (value != null) && (received.value != null)
     */
-   protected int _merge(DataImpl received, long lag) throws DataAccessException
+   protected void _merge(DataImpl received, long lag) throws DataAccessException
    {
-      int cmp = 0;
+      synchroState = 0;
       if (!(received instanceof Directory)) // on garde plutôt le Directory
       {
-         cmp = 2;
+         synchroState = 2;
       }
       else
       {
@@ -1047,42 +1038,39 @@ public class DirectoryImpl extends DataImpl implements Directory
             String key = (String)it.next();
             DataImpl elemRcvd = (DataImpl)hashMapRcvd.get(key);
             DataImpl elem = (DataImpl)hashMap.get(key);
-            if (elem != null)
+            boolean aGreffer = (elem == null);
+            if (!aGreffer)
             {
-               cmpi = elem._synchronize(elemRcvd, lag);
-               if ((cmpi & DIR_PARAM_FLAG) != 0) // l'élément reçu est un Directory et remplace une DataImpl, ou l'inverse
-               {
-                  cmpi = /*1 |*/ elemRcvd._relocate(); // l'élément reçu est + récent
-                  cmp |= MODIFIED_FLAG;
-                  hashMap.put(key, elemRcvd);
-               }
+               elem._synchronize(elemRcvd, lag);
+               cmpi = elem.synchroState;
+               aGreffer = ((cmpi & DIR_PARAM_FLAG) != 0); // l'élément reçu est un Directory et remplace une DataImpl, ou l'inverse
                covered++;
             }
-            else // élément à ajouter, considéré comme + récent
+            if (aGreffer) // élément à ajouter, considéré comme + récent
             {
-               cmpi = /*1 |*/ elemRcvd._relocate();
-               cmp |= MODIFIED_FLAG;
+               elemRcvd._relocate();
+               cmpi = /*1 |*/ elemRcvd.synchroState; // l'élément reçu est + récent
+               synchroState |= MODIFIED_FLAG;
                hashMap.put(key, elemRcvd);
             }
-            if ((cmpi & PENDING_FLAG) != 0) { cmp |= PENDING_FLAG; } // on ne remonte à ce moment-là que le PENDING. Le résultat définitif sera remonté lors d'une prochaine synchro ou par un _makeStable.
-            else { cmp |= cmpi; }
+            if ((cmpi & PENDING_FLAG) != 0) { synchroState |= PENDING_FLAG; } // on ne remonte à ce moment-là que le PENDING. Le résultat définitif sera remonté lors d'une prochaine synchro ou par un _makeStable.
+            else { synchroState |= (cmpi & UPWARD_MASK); }
          }
          if (covered < lenThis) // this contient des éléments en plus, ce qui le ferait considéré comme + récent
          {
-            cmp |= 2;
+            synchroState |= 2;
          }
-         else if (cmp == 0) // rev égales
+         else if (synchroState == 0) // rev égales
          {
-            cmp = (received.revision < revision // pour garantir une rev unique, on choisit l'id de device le plus petit
+            synchroState = (received.revision < revision // pour garantir une rev unique, on choisit l'id de device le plus petit
                                               ? 1   // received considérée comme plus récente
                                               : 2); // création d'une nlle révision
          }
       }
-      if ((cmp & PENDING_FLAG) == 0) // plus aucun fils en attente
+      if ((synchroState & PENDING_FLAG) == 0) // plus aucun fils en attente
       {
-         _computeSynchro(cmp);
+         _computeSynchro();
       }
-      return cmp;
    }
 
    protected boolean isExpected(DataImpl received) throws DataAccessException
@@ -1093,7 +1081,7 @@ public class DirectoryImpl extends DataImpl implements Directory
          DataImpl dest = getData(received.getPathname());
          return ((dest != null)
                && (((_revcmp(received.revision, dest.revision) == 0) && (dest.value == null) && !dest.ignored) // on récupère la valeur qu'on ne connaissait pas
-                  || (dest.requested && (_revcmp(received.revision, dest.peerRevision) == 0))) );
+                  || (((dest.synchroState & REQUESTED_FLAG) != 0) && (_revcmp(received.revision, dest.peerRevision) == 0))) );
       }
       finally
       {
@@ -1198,8 +1186,20 @@ public class DirectoryImpl extends DataImpl implements Directory
    
                if (dest == root) // cas 1)
                {
-                  if (((root.synchroState & PENDING_FLAG) == 0)
-                   && ((synchro == 1) || (synchro ==3))) // en écartant le cas ==, on ignore les messages répétés
+                  if ((root.synchroState & PENDING_FLAG) != 0) // synchro en cours
+                  {
+                     synchro = 0; // pour l'instant, on évite ce cas !!
+                     /*if (received._revcmp(peerRevision) == 2) // si received > peerRevision, on démarre une nouvelle synchro avec cette version + récente
+                     {
+                        ensureStability();
+                        synchro = 1;
+                     }
+                     else // sinon on ignore
+                     {
+                        synchro = 0;
+                     }*/
+                  }
+                  if ((synchro == 1) || (synchro ==3)) // en écartant le cas ==, on ignore les messages répétés
                   {
                      // s'assurer que la rev de base locale est bien supérieure à celle reçue pour le même deviceId
                      if (revisionToVerify) // pour prendre en compte le cas d'un arbre (ré)initialisé ou dont le sds.data ne reflète pas le tout dernier état 
@@ -1221,7 +1221,8 @@ public class DirectoryImpl extends DataImpl implements Directory
                         if (baseRev >= nextRev) { HomeSharedDataImpl.setBaseRevision(baseRev); }
                         revisionToVerify = false;
                      }
-                     synchro = dest._synchronize(received, lag);
+                     dest._synchronize(received, lag);
+                     synchro = dest.synchroState;
                      if ((synchro & PENDING_FLAG) == 0) // synchro terminée
                      {
                         HomeSharedDataImpl.commitLocalRevision();
@@ -1251,10 +1252,10 @@ public class DirectoryImpl extends DataImpl implements Directory
                      if (!dest.ignored) // sauf si on ne veut pas stocker localement
                      {
                         dir = (DirectoryImpl)dest.getParent();
-                        synchro = dest._replaceThisBy(received);
+                        dest._replaceThisBy(received);
                      }
                   }
-                  else if (dest.requested) // sinon on a déjà reçu alors on ignore
+                  else if ((dest.synchroState & REQUESTED_FLAG) != 0) // sinon on a déjà reçu alors on ignore
                   {
                      synchro = _revcmp(received.revision, dest.peerRevision);
                      if (synchro == 0) // cas 2.1) c'est exactement la révision attendue
@@ -1262,11 +1263,11 @@ public class DirectoryImpl extends DataImpl implements Directory
                         dir = (DirectoryImpl)dest.getParent();
                         if ((dest.synchroState & CMP_MASK) == 1) // on sait déjà que c'est un replace
                         {
-                           synchro = 1 | dest._replaceThisBy(received);
+                           dest._replaceThisBy(received);
                         }
                         else
                         {
-                           synchro = dest._synchronize(received, lag); // que deviennent les éventuels conditionals de dest ??
+                           dest._synchronize(received, lag); // que deviennent les éventuels conditionals de dest ??
                         }
                      }
                      else if ((synchro & 1) != 0)
@@ -1278,13 +1279,17 @@ public class DirectoryImpl extends DataImpl implements Directory
                   }
                   if (dir != null)
                   {
-                     if ((synchro & DIR_PARAM_FLAG) != 0)
+                     if ((dest.synchroState & DIR_PARAM_FLAG) != 0)
                      {
-                        synchro &= ~DIR_PARAM_FLAG;
-                        synchro |= MODIFIED_FLAG | received._relocate();
+                        received._relocate();
+                        dest.synchroState &= ~DIR_PARAM_FLAG;
+                        dest.synchroState |= (received.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
                         ((HashMap)dir.value).put(dest.name, received);
                      }
-                     dir._updateIfNoLongerPending(synchro); // différents cas : on reste dans l'état conditionnel, remplacement, merge, ...
+                     if ((dest.synchroState & PENDING_FLAG) == 0)
+                     {
+                        dir._updateIfNoLongerPending(); // différents cas : on reste dans l'état conditionnel, remplacement, merge, ...
+                     }
                      if ((root.synchroState & PENDING_FLAG) == 0) // synchro terminée
                      {
                         HomeSharedDataImpl.commitLocalRevision();
@@ -1313,17 +1318,15 @@ public class DirectoryImpl extends DataImpl implements Directory
    }
 
    /*
-    *
+    * @return Retourne le résultat de synchro (avant raz) pour le _makeStable appelant
     */
-   private int _makeStable()
+   private void _makeStable()
    {
-      int sync = 0;
       if ((synchroState & PENDING_FLAG) != 0)
       {
          if (value != null) // sinon valeur restant inconnue, on laisse tomber
          {
-            sync = synchroState;
-            if (requested) { sync |= 3; }
+            if ((synchroState & REQUESTED_FLAG) != 0) { synchroState |= 3; }
 
             HashMap hashMap = (HashMap)value;
             Iterator it = hashMap.keySet().iterator();
@@ -1333,7 +1336,8 @@ public class DirectoryImpl extends DataImpl implements Directory
                DataImpl data = (DataImpl)hashMap.get(key);
                if ((data.synchroState & PENDING_FLAG) != 0)
                {
-                  if (data.requested && (data.value != null))
+                  boolean requested = ((data.synchroState & REQUESTED_FLAG) != 0);
+                  if (requested && (data.value != null))
                   {
                      // on ne fait plus de requête directe sur cette donnée
                      TaskManager.removePendingRequest(getPathname(), 0);
@@ -1342,26 +1346,23 @@ public class DirectoryImpl extends DataImpl implements Directory
                   {
                      if (data.value != null) // sinon valeur restant inconnue, on laisse tomber
                      {
-                        sync |= data.synchroState;
-                        if (data.requested) { sync |= 3; }
+                        if (requested) { synchroState |= 3; }
                      }
-                     data.synchroState = 0;
-                     data.requested = false;
+                     data.synchroState &= ~PENDING_FLAG;
                      data.peerPreviousRevisions.clear();
                   }
                   else
                   {
-                     sync |= ((DirectoryImpl)data)._makeStable();
+                     ((DirectoryImpl)data)._makeStable();
                   }
+                  synchroState |= data.synchroState & UPWARD_MASK;
                }
-               _computeSynchro(sync);
             }
+            _computeSynchro();
          }
-         synchroState = 0;
-         requested = false;
+         synchroState &= ~PENDING_FLAG;
          peerPreviousRevisions.clear();
       }
-      return sync;
    }
 
    /*

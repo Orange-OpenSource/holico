@@ -120,7 +120,7 @@ public class ParameterTest extends TestCase {
 		Object val = param.getValue();
 		assertTrue(val instanceof Boolean);
 		Boolean valBool = (Boolean)val;
-		assertFalse(valBool);
+		assertFalse(valBool.booleanValue());
 
 		// set a new value with bad type
 		try 
@@ -141,6 +141,6 @@ public class ParameterTest extends TestCase {
 		Object val2 = param.getValue();
 		assertTrue(val2 instanceof Boolean);
 		Boolean valBool2 = (Boolean)val2;
-		assertTrue(valBool2);		
+		assertTrue(valBool2.booleanValue());		
 	}
 }

@@ -52,6 +52,9 @@ public abstract class DataImpl implements Data
    static final int DIR_PARAM_FLAG = 0x00000008;
    static final int MODIFIED_FLAG  = 0x00000010;
    static final int PENDING_FLAG   = 0x00000020;
+   static final int REQUESTED_FLAG = 0x00000040;
+   static final int REVERSE_FLAG   = 0x00000080;
+   static final int UPWARD_MASK    = CMP_MASK | QUESTION_FLAG | MODIFIED_FLAG | PENDING_FLAG; // flags transmis au parent
 
    protected static TaskManager taskManager = TaskManager.getInstance();
 
@@ -77,8 +80,6 @@ public abstract class DataImpl implements Data
    protected int synchroState = 0;
    protected int peerRevision = 0; // Revision reçue avec laquelle est effectuée la synchronisation en cours
    protected ArrayList peerPreviousRevisions = new ArrayList(); // révisions antérieures reçues
-   protected boolean requested = false; // flag non transmis au parent
-   protected boolean reversecmp = false; // id.
 
    private transient ArrayList listeners = null;
 
@@ -439,31 +440,34 @@ public abstract class DataImpl implements Data
     */
    protected void setLaterRevision(int rRevision, ArrayList rPrevRevisions)
    {
-      // on construit la meilleure liste previous
-      if (previousRevisions == null) { previousRevisions = new ArrayList(); }
-      if (((rRevision & HomeSharedDataImpl.DEV_MASK) != (revision & HomeSharedDataImpl.DEV_MASK)) && (revision != 0))
+      if (rRevision != 0)
       {
-         previousRevisions.add(new Integer(revision));
-      }
-      revision = rRevision;
-      Integer prev = _getPrevious(revision);
-      if (prev != null) { previousRevisions.remove(prev); }
-      if (rPrevRevisions != null)
-      {
-         Iterator it = rPrevRevisions.iterator();
-         while (it.hasNext())
+         // on construit la meilleure liste previous
+         if (previousRevisions == null) { previousRevisions = new ArrayList(); }
+         if (((rRevision & HomeSharedDataImpl.DEV_MASK) != (revision & HomeSharedDataImpl.DEV_MASK)) && (revision != 0))
          {
-            Integer rprev = (Integer)it.next();
-            prev = _getPrevious(rprev.intValue());
-            if ((prev == null) || (prev.intValue() < rprev.intValue()))
+            previousRevisions.add(new Integer(revision));
+         }
+         revision = rRevision;
+         Integer prev = _getPrevious(revision);
+         if (prev != null) { previousRevisions.remove(prev); }
+         if (rPrevRevisions != null)
+         {
+            Iterator it = rPrevRevisions.iterator();
+            while (it.hasNext())
             {
-               if (prev != null) { previousRevisions.remove(prev); }
-               previousRevisions.add(rprev);
+               Integer rprev = (Integer)it.next();
+               prev = _getPrevious(rprev.intValue());
+               if ((prev == null) || (prev.intValue() < rprev.intValue()))
+               {
+                  if (prev != null) { previousRevisions.remove(prev); }
+                  previousRevisions.add(rprev);
+               }
             }
          }
+         timestamp = System.currentTimeMillis(); // réactualisation
+         if (value != null) { _notifyChange(); }
       }
-      timestamp = System.currentTimeMillis(); // réactualisation
-      if (value != null) { _notifyChange(); }
    }
 
    /**
@@ -637,26 +641,23 @@ public abstract class DataImpl implements Data
     *
     * @return PENDING_FLAG|0 + MODIFIED_FLAG|0 + DIR_PARAM_FLAG|0
     */
-   protected abstract int _replace(DataImpl received);
+   protected abstract void _replace(DataImpl received);
 
    /*
     * @param received newer than 'this'
     *
     * @return PENDING_FLAG|0 + MODIFIED_FLAG|0 + DIR_PARAM_FLAG|0
     */
-   protected int _replaceThisBy(DataImpl received)
+   protected void _replaceThisBy(DataImpl received)
    {
       peerRevision = received.revision;
       peerPreviousRevisions = received.previousRevisions;
-      requested = false;
-      int cmp = _replace(received);
-      if ((cmp & PENDING_FLAG) == 0) // fait dans replace ??
+      synchroState &= CMP_MASK; // on garde l'info de comparaison, raz sur le reste
+      _replace(received);
+      if ((synchroState & PENDING_FLAG) == 0) // fait dans replace ??
       {
          peerPreviousRevisions.clear(); // pour libérer la mémoire
       }
-      synchroState &= CMP_MASK; // on garde l'info de comparaison
-      synchroState |= cmp;
-      return cmp;
    }
 
    /*
@@ -664,7 +665,7 @@ public abstract class DataImpl implements Data
     *
     * @return 0 or PENDING_FLAG (synchroState initialized to 0)
     */
-   protected abstract int _relocate();
+   protected abstract void _relocate();
 
    /*
     * 
@@ -679,7 +680,7 @@ public abstract class DataImpl implements Data
     *
     * Condition : received.value et value non null
     */
-   protected abstract int _merge(DataImpl received, long lag) throws DataAccessException;
+   protected abstract void _merge(DataImpl received, long lag) throws DataAccessException;
 
    /*
     * @param received data provided in message to synchronize with 'this'
@@ -697,38 +698,36 @@ public abstract class DataImpl implements Data
     *  + PENDING_FLAG                 => + conditional (= pending)
     *  + PENDING_FLAG + MODIFIED_FLAG => + modified
     */
-   protected int _synchronize(DataImpl received, long lag) throws DataAccessException
+   protected void _synchronize(DataImpl received, long lag) throws DataAccessException
    {
+      boolean toReverse = (synchroState & REVERSE_FLAG) != 0;
       peerRevision = received.revision;
       peerPreviousRevisions = received.previousRevisions;
-      requested = false;
-      boolean revcmp = false;
-      int cmp = _revcmp(received); // comparaison avec this
-      if (cmp == 7) // received >< this (antagonistic)
+      synchroState = _revcmp(received); // comparaison avec this
+      if (synchroState == 7) // received >< this (antagonistic)
       {
          // Choix arbitraire (mais sûr) de la révision pour laquelle le devId est < (l'autre est abandonnée)
-         cmp = (revision < received.revision ? 2 : 1);
+         synchroState = (revision < received.revision ? 2 : 1);
       }
-      if ((cmp == 2) || (cmp == 0))  // received < this || received == this
+      if ((synchroState == 2) || (synchroState == 0))  // received < this || received == this
       {
          setRevisionAsPrevious(received.revision, received.previousRevisions);
       }
-      else if (cmp == 1) // received > this
+      else if (synchroState == 1) // received > this
       {
-         cmp |= _replace(received);
+         _replace(received);
       }
-      else // if (cmp == 3) i.e. received <> this (non comparables)
+      else // if (synchroState == 3) i.e. received <> this (non comparables)
       {
          if (((value == null) && (received.value == null)) || ignored) // à vérifier !!
          {
-            cmp = 3; // (on ne change pas la valeur de cmp) La révision reçue est ignorée. Le device courant ne peut rien apporter au merge.
+            synchroState = 3; // (on ne change pas la valeur de cmp) La révision reçue est ignorée. Le device courant ne peut rien apporter au merge.
          }
          else if (received.value == null)
          {
             // merge à faire
             TaskManager.addTask(new SendTask(getPathname(), peerRevision, revision)); // interroge pour obtenir la valeur
-            requested = true;
-            cmp |= PENDING_FLAG; // peerRevision ignorée dans l'immédiat
+            synchroState |= PENDING_FLAG | REQUESTED_FLAG;
          }
          else if (value == null) // && (received.value != null)
          {
@@ -736,35 +735,31 @@ public abstract class DataImpl implements Data
             peerRevision = revision;
             revision = 0; // on efface pour ne pas traiter la révision actuelle comme antérieure
             previousRevisions.clear(); // id.
-            cmp |= _replace(received);
-            if ((cmp & DIR_PARAM_FLAG) != 0) { received.peerRevision = peerRevision; }
+            _replace(received);
+            if ((synchroState & DIR_PARAM_FLAG) != 0) { received.peerRevision = peerRevision; }
             TaskManager.addTask(new SendTask(getPathname(), peerRevision, revision)); // interroge pour obtenir la valeur manquante
-            requested = true;
-            revcmp = true;
-            cmp |= MODIFIED_FLAG | PENDING_FLAG; // merge à faire. On devrait recevoir la peerRevision et alors une nouvelle rev sera créée > this et received.
+            synchroState |= PENDING_FLAG | REQUESTED_FLAG | REVERSE_FLAG;
+            // merge à faire. On devrait recevoir la peerRevision et alors une nouvelle rev sera créée > this et received.
             // Sinon, une nouvelle rev sera créée localement.
          }
          else // (value != null) && (received.value != null)
          {
-            cmp = _merge(received, lag);
+            _merge(received, lag);
          }
       }
-      if ((cmp & PENDING_FLAG) == 0)
+      if ((synchroState & PENDING_FLAG) == 0)
       {
          peerPreviousRevisions.clear(); // pour libérer la mémoire
       }
-      if (reversecmp) // le résultat de la synchro doit être inversé
+      if (toReverse) // le résultat de la synchro doit être inversé
       {
-         int cmpop = cmp & CMP_MASK;
-         if ((cmpop == 1) || (cmpop == 2))
+         int cmp = synchroState & CMP_MASK;
+         if ((cmp == 1) || (cmp == 2))
          {
-            cmpop = 3 - cmpop; // 2(<) <-> 1(>)
-            cmp = (cmp & ~CMP_MASK) | cmpop; 
+            cmp = 3 - cmp; // 2(<) <-> 1(>)
+            synchroState = (synchroState & ~CMP_MASK) | cmp; 
          }
       }
-      synchroState = cmp;
-      reversecmp = revcmp;
-      return cmp;
    }
 
    /*
@@ -773,7 +768,7 @@ public abstract class DataImpl implements Data
 
    protected String _writeTo(String prefixName, DataOutputStream out, int floorRevision) throws IOException
    {
-      boolean isRequest = (floorRevision != 0) && requested && (floorRevision == peerRevision);
+      boolean isRequest = (floorRevision != 0) && ((synchroState & REQUESTED_FLAG) != 0) && (floorRevision == peerRevision);
       boolean valueToWrite = !isRequest
             && (value != null)
             && ((type == TYPE_INT) || (type == TYPE_BOOL) // on écrit systématiquement les int et bool. Ca ne mange pas de pain !
