@@ -37,6 +37,8 @@ package com.francetelecom.rd.sds.impl;
 import java.io.DataOutputStream;
 import java.io.IOException;
 
+import com.francetelecom.rd.sds.Data;
+import com.francetelecom.rd.sds.DataEvent;
 import com.francetelecom.rd.sds.Parameter;
 import com.francetelecom.rd.sds.DataAccessException;
 
@@ -104,14 +106,14 @@ public class ParameterImpl extends DataImpl implements Parameter
    protected Object clone(DirectoryImpl dirParent)
    {
       ParameterImpl param = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          param = new ParameterImpl(dirParent, getName(), pathname, type, value, revision, timestamp, false);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return param;
    }
@@ -124,19 +126,67 @@ public class ParameterImpl extends DataImpl implements Parameter
       return getValueImpl();
    }
 
+   /**
+    * @return Returns the int value.
+    */
+   public int getIntValue() throws DataAccessException
+   {
+      int res = 0;
+      if (type != Data.TYPE_INT)
+      {
+         throw new DataAccessException(DataAccessException.NOT_AN_INTEGER, getPathname());
+      }
+      Integer val = (Integer)getValueImpl();
+      if (val != null)
+      {
+         res = val.intValue();
+      }
+      return res;
+   }
+
+   /**
+    * @return Returns the boolean value.
+    */
+   public boolean getBooleanValue() throws DataAccessException
+   {
+      boolean res = false;
+      if (type != Data.TYPE_BOOL)
+      {
+         throw new DataAccessException(DataAccessException.NOT_A_BOOLEAN, getPathname());
+      }
+      Boolean val = (Boolean)getValueImpl();
+      if (val != null)
+      {
+         res = val.booleanValue();
+      }
+      return res;
+   }
+
+   /**
+    * @return Returns the string alue.
+    */
+   public String getStringValue() throws DataAccessException
+   {
+      if (type != Data.TYPE_STRING)
+      {
+         throw new DataAccessException(DataAccessException.NOT_A_STRING, getPathname());
+      }
+      return (String)getValueImpl();
+   }
+
    /* (non-Javadoc)
     * @see com.francetelecom.rd.sds.Parameter#setValue(java.lang.Object)
     */
    public void setValue(Object value) throws DataAccessException
    {
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          setValueImpl(value);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
    }
 
@@ -144,7 +194,7 @@ public class ParameterImpl extends DataImpl implements Parameter
    {
       this.value = _convertValue(this.value, type, true);
       this.type = type;
-      setNewRevision(true);
+      setNewRevision(new DataEvent(this, DataEvent.TYPE_CHANGED, null));
    }
 
    /**
@@ -165,7 +215,7 @@ public class ParameterImpl extends DataImpl implements Parameter
    protected void setValueImpl(Object value) throws DataAccessException
    {
       this.value = _convertValue(value, type, false);
-      setNewRevision(true);
+      setNewRevision(new DataEvent(this, DataEvent.VALUE_CHANGED, null));
    }
 
    /**
@@ -236,9 +286,13 @@ public class ParameterImpl extends DataImpl implements Parameter
    {
       if ((received instanceof ParameterImpl) && ((received.value != null) || (value == null)))
       {
+         if ((revision != 0) && (received.revision != revision))
+         {
+            synchroState |= MODIFIED_FLAG;
+            addDataEvent(new DataEvent(this, (type != received.type ? DataEvent.TYPE_CHANGED : DataEvent.VALUE_CHANGED), null));
+         }
          value = received.value;
          type = received.type;
-         if ((revision != 0) && (received.revision != revision)) { synchroState |= MODIFIED_FLAG; }
          setLaterRevision(received.revision, received.previousRevisions);
          if ((value == null) && !ignored)
          {
@@ -295,7 +349,7 @@ public class ParameterImpl extends DataImpl implements Parameter
       else if ((received.type == type) && (received.value.equals(value))) // même valeur (et même type)
       {
          // Choix de la révision pour laquelle le devId est <
-         if (revision < received.revision) // choix rev locale
+         if (HomeSharedDataImpl.isPriorTo(revision >> 24, received.revision >> 24)) // choix rev locale
          {
             setRevisionAsPrevious(received.revision, received.previousRevisions);
          }
@@ -320,7 +374,7 @@ public class ParameterImpl extends DataImpl implements Parameter
    /*
     * A compléter avec les différents type de values !!
     */
-   protected String writeValueTo(String prefixName, DataOutputStream out, int floorRevision) throws IOException
+   protected String writeValueTo(String prefixName, DataOutputStream out, int floorRevision, int maxLevel) throws IOException
    {
       out.writeUTF(value == null ? "" : value instanceof String ? (String)value : value.toString());
       return prefixName;

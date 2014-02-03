@@ -44,9 +44,8 @@ import com.francetelecom.rd.hlc.Node;
 public class HomeBusfactoryTest extends TestCase {
 
 	public void testGetHomeBusFactory() throws Exception {
-		int deviceId = 125;
 
-		HomeBusFactory factory = new HomeBusFactory(deviceId);
+		HomeBusFactory factory = new HomeBusFactory(null);
 		assertNotNull(factory);
 
 	}
@@ -58,8 +57,7 @@ public class HomeBusfactoryTest extends TestCase {
 	 * @throws HomeBusException
 	 */
 	public void testCreateNode() throws Exception {
-		int deviceId = 125;
-		HomeBusFactory factory = new HomeBusFactory(deviceId);
+		HomeBusFactory factory = new HomeBusFactory(null);
 
 		// normal creation
 		Node node = factory.createNode("nodeId", "deviceId", "nodeName");
@@ -78,8 +76,7 @@ public class HomeBusfactoryTest extends TestCase {
 	 */
 	public void testCreateNode_CheckFail_nodeId() throws Exception {
 
-		int deviceId = 125;
-		HomeBusFactory factory = new HomeBusFactory(deviceId);
+		HomeBusFactory factory = new HomeBusFactory(null);
 
 		// error check
 		try {
@@ -105,8 +102,7 @@ public class HomeBusfactoryTest extends TestCase {
 	 */
 	public void testCreateNode_CheckFail_deviceId() throws Exception {
 
-		int deviceId = 125;
-		HomeBusFactory factory = new HomeBusFactory(deviceId);
+		HomeBusFactory factory = new HomeBusFactory(null);
 
 		// error check
 		try {
@@ -131,8 +127,7 @@ public class HomeBusfactoryTest extends TestCase {
 	 */
 	public void testCreateNode_CheckFail_name() throws Exception {
 
-		int deviceId = 125;
-		HomeBusFactory factory = new HomeBusFactory(deviceId);
+		HomeBusFactory factory = new HomeBusFactory(null);
 
 		// error check
 		try {

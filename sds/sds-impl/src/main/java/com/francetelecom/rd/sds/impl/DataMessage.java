@@ -39,6 +39,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.util.ArrayList;
+import java.util.UUID;
 
 import com.francetelecom.rd.holico.logs.Logger;
 import com.francetelecom.rd.holico.logs.LoggerFactory;
@@ -66,9 +68,9 @@ class DataMessage
    private String pathname = null;
    private int expectedRevision = -1; // -1 pour les messages SDS, -2 pour les acquittements
    private int floorRevision = 0;
+   private int maxLevel = -1;
 
    // ---------------------------------------------------------------------
-
 
    /**
     * @param data
@@ -78,13 +80,23 @@ class DataMessage
       this.data = data;
       this.floorRevision = floorRev;
       this.timestamp = System.currentTimeMillis();
-      this.deviceId = HomeSharedDataImpl.getDeviceId();
    }
 
    /**
     * @param data
     */
-   private DataMessage(DataImpl data, int id, long ts)
+   public DataMessage(DataImpl data, int floorRev, int maxLevel)
+   {
+      this.data = data;
+      this.floorRevision = floorRev;
+      this.maxLevel = maxLevel;
+      this.timestamp = System.currentTimeMillis();
+   }
+
+   /**
+    * @param data
+    */
+   private DataMessage(int id, long ts, DataImpl data)
    {
       this.data = data;
       this.timestamp = ts;
@@ -98,7 +110,6 @@ class DataMessage
    {
       this.pathname = pathname;
       this.timestamp = System.currentTimeMillis();
-      this.deviceId = HomeSharedDataImpl.getDeviceId();
       this.expectedRevision = expectedRev;
       this.floorRevision = floorRev;
    }
@@ -187,12 +198,18 @@ class DataMessage
       {
          DataOutputStream dos = new DataOutputStream(bos);
 
-         dos.write(deviceId);
+         ArrayList<UUID> UUIDs = HomeSharedDataImpl.getUUIDs();
+         dos.write(UUIDs.size());
+         for(UUID uuid : UUIDs)
+         {
+            dos.writeLong(uuid.getMostSignificantBits());
+            dos.writeLong(uuid.getLeastSignificantBits());
+         }
          dos.writeLong(timestamp);
          if (expectedRevision == -1)
          {
             dos.write(1);
-            data.writeTo(dos, floorRevision);
+            data.writeTo(dos, floorRevision, maxLevel);
          }
          else
          {
@@ -221,19 +238,26 @@ class DataMessage
          ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
          DataInputStream dis = new DataInputStream(bis);
 
-         int devId = dis.read();
+         int nbDev = dis.read();
+         int[] devIds = new int[nbDev];
+         for (int i=0; i<nbDev; i++)
+         {
+            long most = dis.readLong();
+            long least = dis.readLong();
+            devIds[i] = HomeSharedDataImpl.getDeviceId(new UUID(most, least));
+         }
          long ts = dis.readLong();
          if (dis.read() == 1)
          {
-            DataImpl dir = DataImpl.readFrom(dis);
-            res = new DataMessage(dir, devId, ts);
+            DataImpl dir = DataImpl.readFrom(dis, devIds);
+            res = new DataMessage(devIds[0], ts, dir);
          }
          else
          {
             String pathname = dis.readUTF();
-            int expectedRev = dis.readInt();
-            int floorRev = dis.readInt();
-            res = new DataMessage(pathname, devId, ts, expectedRev, floorRev);
+            int expectedRev = DataImpl.transpose(dis.readInt(), devIds);
+            int floorRev =  DataImpl.transpose(dis.readInt(), devIds);
+            res = new DataMessage(pathname, devIds[0], ts, expectedRev, floorRev);
          }
          dis.close();
       }

@@ -34,7 +34,7 @@
  */
 package com.francetelecom.rd.sds.communicationlayer.impl;
 
-import java.util.EventObject;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -50,8 +50,9 @@ import ch.ethz.inf.vs.californium.endpoint.resources.Resource;
 import com.francetelecom.rd.sds.Data;
 import com.francetelecom.rd.sds.Directory;
 import com.francetelecom.rd.sds.Parameter;
-import com.francetelecom.rd.sds.ValueChangeListener;
+import com.francetelecom.rd.sds.DataChangeListener;
 import com.francetelecom.rd.sds.impl.HomeSharedDataImpl;
+import com.francetelecom.rd.sds.DataEvent;
 
 /**
  * This californium (coap) Resource represents the sds tree.
@@ -126,9 +127,9 @@ public class SdsTreeResource extends LocalResource {
 	private void initResourceForDirectory() {
 		// listen to changes on this Directory to update the corresponding
 		// sub-resources.
-		dir.addValueChangeListener(new ValueChangeListener() {
+		dir.addDataChangeListener(new DataChangeListener() {
 
-			public void valueChange(EventObject evt) {
+			public void dataChange(ArrayList<DataEvent> evt) {
 
 				updateChildResources();
 			}

@@ -115,7 +115,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Object clone(DirectoryImpl dirParent)
    {
       DirectoryImpl dir = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          HashMap hashMapCopy = (value == null ? null : new HashMap());
@@ -133,9 +133,22 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return dir;
+   }
+
+   protected void markUsedIds(boolean[] ids, int oldId)
+   {
+      super.markUsedIds(ids, oldId);
+      if (value != null)
+      {
+         Collection values = ((HashMap)value).values();
+         for (Object data : values)
+         {
+            ((DataImpl)data).markUsedIds(ids, oldId);
+         }
+      }
    }
 
    /**
@@ -150,7 +163,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Object getParameterValue(String pathname) throws DataAccessException
    {
       Object res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          DataImpl data = getData(pathname);
@@ -159,7 +172,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -176,7 +189,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public String getParameterStringValue(String pathname) throws DataAccessException
    {
       String res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          DataImpl data = getData(pathname);
@@ -192,7 +205,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -209,7 +222,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public int getParameterIntValue(String pathname) throws DataAccessException
    {
       int res = 0;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          DataImpl data = getData(pathname);
@@ -229,7 +242,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -246,7 +259,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public boolean getParameterBooleanValue(String pathname) throws DataAccessException
    {
       boolean res = false;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          DataImpl data = getData(pathname);
@@ -266,7 +279,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -281,14 +294,39 @@ public class DirectoryImpl extends DataImpl implements Directory
     */
    public void setParameterValue(String pathname, Object val) throws DataAccessException
    {
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
-         _operateData(pathname.trim(), 2, val, 0);
+         _operateData(pathname.trim(), 2, val, 0, true);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
+      }
+   }
+
+   /**
+    * Marks the data as modified.
+    * 
+    * @param pathname data name
+    *  
+    * @throws DataAccessException
+    */
+   public void touch(String pathname) throws DataAccessException
+   {
+      boolean largest = taskManager.lock();
+      try
+      {
+         DataImpl data = (pathname == null ? this : _operateData(pathname.trim(), 0, null, 0, true));
+         if (data == null)
+         {
+            throw new DataAccessException(DataAccessException.PATHNAME_NOT_FOUND);
+         }
+         data.setNewRevision(new DataEvent(data, DataEvent.VALUE_CHANGED, null));
+      }
+      finally
+      {
+         taskManager.unlock(largest);
       }
    }
 
@@ -303,7 +341,7 @@ public class DirectoryImpl extends DataImpl implements Directory
     */
    protected DataImpl getData(String pathname) throws DataAccessException
    {
-      return (pathname == null ? this : _operateData(pathname.trim(), 0, null, 0));
+      return (pathname == null ? this : _operateData(pathname.trim(), 0, null, 0, true));
    }
 
    /**
@@ -316,7 +354,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public boolean contains(String pathname)
    {
       boolean res = false;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          res = (getData(pathname) != null);
@@ -326,12 +364,12 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
 
-   protected DataImpl _operateData(String pathname, int operation, Object val, int type) throws DataAccessException
+   private DataImpl _operateData(String pathname, int operation, Object val, int type, boolean existingDir) throws DataAccessException
    {
       DataImpl res = null;
       if ((pathname == null) || pathname.isEmpty())
@@ -340,9 +378,9 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       else
       {
-         int k = pathname.indexOf('.');
-         int j = pathname.indexOf('[');
-         int l = pathname.indexOf(']');
+         int k = pathname.indexOf(PATH_SEPARATOR);
+         int j = pathname.indexOf(LEFT_BRACKET_SEPARATOR);
+         int l = pathname.indexOf(RIGHT_BRACKET_SEPARATOR);
          boolean speDir = ((j != -1) && ((k==-1) || (j < k)));
          if (speDir) { k = j; }
          if (k != -1) // cas des pathnames terminés par "." ou "[]"
@@ -419,7 +457,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                   {
                      throw new DataAccessException(DataAccessException.PATHNAME_NOT_FOUND, pathname);
                   }
-                  setNewRevision(true); // le directory courant a changé
+                  setNewRevision(new DataEvent(this, DataEvent.DATA_REMOVED, pathname)); // le directory courant a changé
                   break;
                case 4: // new (création dans le répertoire courant)
                   if (hashMap == null)
@@ -433,8 +471,8 @@ public class DirectoryImpl extends DataImpl implements Directory
                   }
                   if (res == null)
                   {
-                	 switch (type)
-                	 {
+                	   switch (type)
+                	   {
              	        case TYPE_GEN_DIR:
             	        case TYPE_SPE_DIR:
             	        	res = new DirectoryImpl(this, pathname, type);
@@ -448,9 +486,9 @@ public class DirectoryImpl extends DataImpl implements Directory
             	        default: // TYPE_STRING, TYPE_PARAM
             	        	res = new ParameterImpl(this, pathname, "", type);
             	        	break;
-                	 }
+                	   }
                      hashMap.put(pathname, res);
-                     res.setNewRevision(true);
+                     res.setNewRevision(existingDir ? new DataEvent(this, DataEvent.DATA_ADDED, pathname) : null);
                   }
                   else
                   {
@@ -483,7 +521,7 @@ public class DirectoryImpl extends DataImpl implements Directory
             String nestName = pathname.substring(k+1);
             if (speDir)
             {
-               j = nestName.indexOf(']');
+               j = nestName.indexOf(RIGHT_BRACKET_SEPARATOR);
                if (j != -1)
                {
                   nestName = nestName.substring(0,j) + nestName.substring(j+1);
@@ -520,11 +558,12 @@ public class DirectoryImpl extends DataImpl implements Directory
                   }
                }
             }
-            res = ((DirectoryImpl)dir)._operateData(nestName, operation, val, type);
+            res = ((DirectoryImpl)dir)._operateData(nestName, operation, val, type, !newDir);
             if (newDir) // arrivé là, on est sûr qu'il n'y a pas eu d'exception, on peut appliquer l'ajout et attacher le dir créé
             {
                if (value == null) { value = new HashMap(); }
                ((HashMap)value).put(dirName, dir);
+               if (existingDir) { addDataEvent(new DataEvent(this, DataEvent.DATA_ADDED, dirName)); }
             }
          }
       }
@@ -545,28 +584,28 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Data newData(String pathname, int type, boolean overwrite) throws DataAccessException
    {
       DataImpl res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
-         res = _operateData(pathname.trim(), 4, (overwrite ? this : null), type);
+         res = _operateData(pathname.trim(), 4, (overwrite ? this : null), type, true);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
 
    protected void putData(String pathname, DataImpl newData) throws DataAccessException
    {
-      taskManager.lockUnconditionally();
+      taskManager.lockIntra();
       try
       {
-         _operateData(pathname.trim(), 1, newData, TYPE_PARAM);
+         _operateData(pathname.trim(), 1, newData, TYPE_PARAM, true);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlockIntra();
       }
    }
 
@@ -582,14 +621,14 @@ public class DirectoryImpl extends DataImpl implements Directory
    public DirectoryImpl newDirectory(String pathname) throws DataAccessException
    {
       DirectoryImpl res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
-         res = (DirectoryImpl)_operateData(pathname.trim(), 4, null, TYPE_GEN_DIR);
+         res = (DirectoryImpl)_operateData(pathname.trim(), 4, null, TYPE_GEN_DIR, true);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -606,14 +645,14 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Data deleteData(String pathname) throws DataAccessException
    {
       Data res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
-         res = _operateData(pathname.trim(), 3, null, 0);
+         res = _operateData(pathname.trim(), 3, null, 0, true);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    } 
@@ -628,14 +667,14 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Data getChild(String pathname) throws DataAccessException
    {
       Data res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          res = getData(pathname);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -652,7 +691,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Directory getDirectory(String pathname) throws DataAccessException
    {
       Directory res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          Data data = getData(pathname);
@@ -667,7 +706,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -684,7 +723,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Parameter getParameter(String pathname) throws DataAccessException
    {
       Parameter res = null;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          Data data = getData(pathname);
@@ -699,7 +738,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -716,7 +755,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public String[] getChildNames(String pathname) throws DataAccessException
    {
       String[] res = _EMPTY_STRING_ARRAY;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          DataImpl dir = ((pathname == null) || (pathname.isEmpty()) ? this : getData(pathname));
@@ -743,7 +782,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -756,7 +795,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    public Data[] getChildren()
    {
       Data[] res = _EMPTY_DATA_ARRAY;
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          if (value != null)
@@ -772,7 +811,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
       return res;
    }
@@ -782,20 +821,20 @@ public class DirectoryImpl extends DataImpl implements Directory
     *  
     * @param pathname name of the monitored parameter.
     * 
-    * @param listener the ValueChangeListener
+    * @param listener the DataChangeListener
     * 
     * @throws DataAccessException
     */
-   public void addValueChangeListener(String pathname, ValueChangeListener listener) throws DataAccessException
+   public void addValueChangeListener(String pathname, DataChangeListener listener) throws DataAccessException
    {
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
-         getData(pathname).addValueChangeListener(listener);
+         getData(pathname).addDataChangeListener(listener);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
    }
 
@@ -808,16 +847,16 @@ public class DirectoryImpl extends DataImpl implements Directory
     * 
     * @throws DataAccessException
     */
-   public void removeValueChangeListener(String pathname, ValueChangeListener listener) throws DataAccessException
+   public void removeValueChangeListener(String pathname, DataChangeListener listener) throws DataAccessException
    {
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
-         getData(pathname).removeValueChangeListener(listener);
+         getData(pathname).removeDataChangeListener(listener);
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
    }
 
@@ -873,7 +912,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       else if (modified) // nlle révision créée. Sinon on ignore
       {
-         setNewRevision(false);
+         setNewRevision(null);
          if (cmp != 3) // nlle révision créée > received
          {
             setRevisionAsPrevious(peerRevision, peerPreviousRevisions);
@@ -922,7 +961,11 @@ public class DirectoryImpl extends DataImpl implements Directory
    {
       if (received instanceof Directory)
       {
-         type = received.type;
+         if (type != received.type)
+         {
+            type = received.type;
+            addDataEvent(new DataEvent(this, DataEvent.TYPE_CHANGED, null));
+         }
          boolean thisEmpty = (value == null) || ((HashMap)value).isEmpty();
          if ((received.value != null) && !thisEmpty)
          {
@@ -947,6 +990,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                   break;
                }
                hashMap.remove(found);
+               addDataEvent(new DataEvent(this, DataEvent.DATA_REMOVED, found));
                synchroState |= MODIFIED_FLAG;
             }
             // on synchronise tous les éléments restants
@@ -969,9 +1013,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                }
                if (aGreffer)
                {
-                  elemRcvd._relocate();
-                  synchroState |= (elemRcvd.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
-                  hashMap.put(key, elemRcvd); // on ajoute tout simplement, élément ajouté ds la rév plus récente ou on remplace un dir par un param
+                  graft(key, elemRcvd); // on ajoute tout simplement, élément ajouté ds la rév plus récente ou on remplace un dir par un param
                }
             }
             if ((synchroState & PENDING_FLAG) == 0) // on verifie qu'on n'a pas le flag PENDING
@@ -988,13 +1030,21 @@ public class DirectoryImpl extends DataImpl implements Directory
          else //thisEmpty
          {
             received._relocate();
-            synchroState |= (received.synchroState & PENDING_FLAG);
+            synchroState |= received.synchroState;
+            value = received.value; // éventuellement null
             if ((revision != 0) && (received.revision != revision))
             {
                //synchroState |= (received.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
+               HashMap hashMap = (HashMap)value;
+               if ((hashMap != null) && !hashMap.isEmpty())
+               {
+                  for (Object key : hashMap.keySet())
+                  {
+                     addDataEvent(new DataEvent(this, DataEvent.DATA_ADDED, (String)key));
+                  }
+               }
                synchroState |= MODIFIED_FLAG;
             }
-            value = received.value; // éventuellement null
             if (((synchroState & PENDING_FLAG) == 0) // on verifie qu'on n'a pas le flag PENDING
                || (revision == 0)) // cas root non initialisée
             {
@@ -1048,10 +1098,8 @@ public class DirectoryImpl extends DataImpl implements Directory
             }
             if (aGreffer) // élément à ajouter, considéré comme + récent
             {
-               elemRcvd._relocate();
+               graft(key, elemRcvd);
                cmpi = /*1 |*/ elemRcvd.synchroState; // l'élément reçu est + récent
-               synchroState |= MODIFIED_FLAG;
-               hashMap.put(key, elemRcvd);
             }
             if ((cmpi & PENDING_FLAG) != 0) { synchroState |= PENDING_FLAG; } // on ne remonte à ce moment-là que le PENDING. Le résultat définitif sera remonté lors d'une prochaine synchro ou par un _makeStable.
             else { synchroState |= (cmpi & UPWARD_MASK); }
@@ -1062,9 +1110,10 @@ public class DirectoryImpl extends DataImpl implements Directory
          }
          else if (synchroState == 0) // rev égales
          {
-            synchroState = (received.revision < revision // pour garantir une rev unique, on choisit l'id de device le plus petit
-                                              ? 1   // received considérée comme plus récente
-                                              : 2); // création d'une nlle révision
+            // pour garantir une rev unique, on choisit l'id de device le plus petit
+            synchroState = (HomeSharedDataImpl.isPriorTo(revision >> 24, received.revision >> 24)
+                                              ? 2   // création d'une nlle révision
+                                              : 1); // received considérée comme plus récente
          }
       }
       if ((synchroState & PENDING_FLAG) == 0) // plus aucun fils en attente
@@ -1075,7 +1124,7 @@ public class DirectoryImpl extends DataImpl implements Directory
 
    protected boolean isExpected(DataImpl received) throws DataAccessException
    {
-      taskManager.lockUnconditionally();
+      taskManager.lockIntra();
       try
       {
          DataImpl dest = getData(received.getPathname());
@@ -1085,7 +1134,7 @@ public class DirectoryImpl extends DataImpl implements Directory
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlockIntra();
       }
    }
 
@@ -1101,7 +1150,7 @@ public class DirectoryImpl extends DataImpl implements Directory
    {
       if (original) // pas de synchro sur une copie
       {
-         taskManager.lockUnconditionally();
+         taskManager.lockIntra();
          try
          {
             boolean okToRespond = (expectedRevision == 0); // dans le cas 0, on envoie de toute façon la dernière révision, à moins qu'on ait pas encore de données locales (revision == 0)
@@ -1136,7 +1185,7 @@ public class DirectoryImpl extends DataImpl implements Directory
          }
          finally
          {
-            taskManager.unlock();
+            taskManager.unlockIntra();
          }
       }
    }
@@ -1155,7 +1204,7 @@ public class DirectoryImpl extends DataImpl implements Directory
          // avant une opération nécessitant un état stable
          logger.info("FORCED EXIT OF TRANSITION STATE");
          root._makeStable();
-         HomeSharedDataImpl.commitLocalRevision();
+         HomeSharedDataImpl.unlockRevision();
       }
    }
 
@@ -1163,7 +1212,9 @@ public class DirectoryImpl extends DataImpl implements Directory
    {
       if (original) // pas de synchro sur une copie
       {
-         taskManager.lockUnconditionally();
+         taskManager.lockIntra();
+         HomeSharedDataImpl.lockRevision();
+         DirectoryImpl root = (DirectoryImpl)HomeSharedDataImpl.getRootDirectory();
          try
          {
             DataImpl dest = null;
@@ -1176,7 +1227,6 @@ public class DirectoryImpl extends DataImpl implements Directory
             }
             if (dest != null) // sinon on laisse tomber !!
             {
-               DirectoryImpl root = (DirectoryImpl)HomeSharedDataImpl.getRootDirectory();
                int floorRevision = -2; // pour envoyer une réponse depuis la racine
                int synchro = _revcmp(received.revision, dest.revision); // 2 : received < dest, 0 : received == dest, 1 : received > dest, 3 : received <> dest
    
@@ -1223,10 +1273,6 @@ public class DirectoryImpl extends DataImpl implements Directory
                      }
                      dest._synchronize(received, lag);
                      synchro = dest.synchroState;
-                     if ((synchro & PENDING_FLAG) == 0) // synchro terminée
-                     {
-                        HomeSharedDataImpl.commitLocalRevision();
-                     }
                   }
                   if ((synchro & PENDING_FLAG) == 0)
                   {
@@ -1281,10 +1327,8 @@ public class DirectoryImpl extends DataImpl implements Directory
                   {
                      if ((dest.synchroState & DIR_PARAM_FLAG) != 0)
                      {
-                        received._relocate();
-                        dest.synchroState &= ~DIR_PARAM_FLAG;
-                        dest.synchroState |= (received.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
-                        ((HashMap)dir.value).put(dest.name, received);
+                        dir.graft(dest.name, received);
+                        dest = received;
                      }
                      if ((dest.synchroState & PENDING_FLAG) == 0)
                      {
@@ -1292,7 +1336,6 @@ public class DirectoryImpl extends DataImpl implements Directory
                      }
                      if ((root.synchroState & PENDING_FLAG) == 0) // synchro terminée
                      {
-                        HomeSharedDataImpl.commitLocalRevision();
                         if ((root.synchroState & QUESTION_FLAG) != 0)
                         {
                            floorRevision = -1; // on envoie la dernière rev pour confirmation
@@ -1312,7 +1355,11 @@ public class DirectoryImpl extends DataImpl implements Directory
          }
          finally
          {
-            taskManager.unlock();
+            if ((root.synchroState & PENDING_FLAG) == 0) // synchro terminée
+            {
+               HomeSharedDataImpl.unlockRevision();
+            }
+            taskManager.unlockIntra();
          }
       }
    }
@@ -1367,7 +1414,7 @@ public class DirectoryImpl extends DataImpl implements Directory
 
    /*
     */
-   protected String writeValueTo(String prefixName, DataOutputStream out, int floorRevision) throws IOException
+   protected String writeValueTo(String prefixName, DataOutputStream out, int floorRevision, int maxLevel) throws IOException
    {
       HashMap hashMap = (HashMap)value;
       Iterator it = hashMap.keySet().iterator();
@@ -1375,14 +1422,22 @@ public class DirectoryImpl extends DataImpl implements Directory
       {
          String key = (String)it.next();
          DataImpl data = (DataImpl)hashMap.get(key);
-         prefixName = data._writeTo(prefixName, out, floorRevision);
+         prefixName = data._writeTo(prefixName, out, floorRevision, maxLevel);
       }
       return prefixName;
    }
 
    protected String toStyledString(String prefix)
    {
-      String line = prefix + " " +  getName() + (type == TYPE_GEN_DIR ? "." : "[]");
+      String line = prefix + " " +  getName();
+      if (type == TYPE_GEN_DIR)
+      {
+         line += PATH_SEPARATOR;
+      }
+      else
+      {
+         line += Character.toString(LEFT_BRACKET_SEPARATOR) + RIGHT_BRACKET_SEPARATOR;
+      }
       if ((_TREE_DISPLAY_MODE & 2) != 0) { line += " " + fullRevisionToString(); }
 
       if (value != null)

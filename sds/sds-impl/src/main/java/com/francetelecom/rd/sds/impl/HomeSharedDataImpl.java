@@ -30,11 +30,13 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 	http://opensource.org/licenses/BSD-3-Clause
+ *    http://opensource.org/licenses/BSD-3-Clause
  */
 package com.francetelecom.rd.sds.impl;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.UUID;
 
 import com.francetelecom.rd.holico.logs.Logger;
 import com.francetelecom.rd.holico.logs.LoggerFactory;
@@ -61,15 +63,30 @@ public class HomeSharedDataImpl implements HomeSharedData
    private static HomeSharedDataImpl instance = new HomeSharedDataImpl();
    private static TaskManager taskManager = TaskManager.getInstance();
 
+   private static ArrayList<UUID> UUIDs = new ArrayList<UUID>();
+   private static final UUID NO_UUID = new UUID(0,0);
+
    private Directory root = null;
-   private int lastLocalRevision = 0;
-   private int nextLocalRevision = 0;
+   private int lastLocalRevision = 1; // Voir possibilité de remettre à 0 !!
+   private int lockRevisionState = 0; // 0: non locké, 1: locké non utilisé, 2 locké et utilisé
 
    // ---------------------------------------------------------------------
 
    public static HomeSharedDataImpl getInstance()
    {
       return instance;
+   }
+
+   public static ArrayList<UUID> getUUIDs()
+   {
+      return UUIDs;
+   }
+
+   public static boolean isPriorTo(int id0, int id1)
+   {
+      UUID uuid0 = (id0 < UUIDs.size() ? UUIDs.get(id0) : NO_UUID);
+      UUID uuid1 = (id1 < UUIDs.size() ? UUIDs.get(id1) : NO_UUID);
+      return (uuid0.compareTo(uuid1) == -1);
    }
 
    /**
@@ -85,7 +102,7 @@ public class HomeSharedDataImpl implements HomeSharedData
     */
    public void unlock()
    {
-      taskManager.unlock();
+      taskManager.unlock(true);
    }
 
    /**
@@ -93,12 +110,12 @@ public class HomeSharedDataImpl implements HomeSharedData
     * 
     * @param forceReinit true to force the creation of an empty shared data structure
     * @param filename to read the data
-    * @param deviceId device identifier. Only used if a new shared data structure needs to be created, in this case,
-    * the value must be between 1 and 255 (otherwise null is returned).
-    * 
+    * @param uuid unique device identifier. If null, a new UUID is randomly created. 
+    * Remark : uuid is useful only when a new shared data structure needs to be created.
+    *
     * @return The root directory of the shared data structure.
     */
-   public Directory getRootDirectory(boolean forceReinit, String filename, int deviceId)
+   public Directory getRootDirectory(boolean forceReinit, String filename, UUID uuid)
    {
       if (forceReinit)
       {
@@ -117,8 +134,39 @@ public class HomeSharedDataImpl implements HomeSharedData
                FileInputStream fis = new FileInputStream(filename);
                DataInputStream dis = new DataInputStream(fis);
 
-               lastLocalRevision = dis.readInt();
-               root = (DirectoryImpl)DataImpl.readFrom(dis);
+               int nbDev = dis.readInt();
+               int oldId = nbDev >> 24;
+               if (oldId > 0) // C'est un ancien format, on n'a pas de table d'UUIDs
+               {
+                  if (uuid == null)
+                  {
+                     uuid = UUID.randomUUID();
+                  }
+                  UUIDs.add(uuid);
+                  lastLocalRevision = nbDev & ~DEV_MASK;
+                  if (lastLocalRevision==0) { lastLocalRevision = 1; }
+                  nbDev = 1;
+               }
+               else
+               {
+                  oldId = -1;
+                  for (int i=0; i<nbDev; i++)
+                  {
+                     long most = dis.readLong();
+                     long least = dis.readLong();
+                     UUIDs.add(new UUID(most, least));
+                  }
+                  uuid = UUIDs.get(0);
+                  lastLocalRevision = dis.readInt();
+               }
+               root = (DirectoryImpl)DataImpl.readFrom(dis, null);
+               // recherche des ids utilisés ou non
+               boolean[] ids = new boolean[nbDev]; // par défaut tout est à false
+               ((DirectoryImpl)root).markUsedIds(ids, oldId);
+               for (int i=1; i<nbDev; i++)
+               {
+                  if (!ids[i]) { UUIDs.set(i, NO_UUID); }
+               }
                dis.close();
 
                logger.debug("shared data structure loaded from : " + filename);
@@ -137,11 +185,15 @@ public class HomeSharedDataImpl implements HomeSharedData
                e.printStackTrace();
             }
          }
-         if ((root == null) && (deviceId > 0) && (deviceId < 128))
+         if (root == null)
          {
             // local root still does not exist (no file)
             // => create a new one
-            lastLocalRevision = deviceId << 24;
+            if (uuid == null)
+            {
+               uuid = UUID.randomUUID();
+            }
+            UUIDs.add(uuid);
             root = new DirectoryImpl(null, null, 0);
 
             logger.debug("new shared data structure created");
@@ -152,6 +204,7 @@ public class HomeSharedDataImpl implements HomeSharedData
             // create a SendTask with null pathname => send root
             TaskManager.addTask(new SendTask(null, -1));
          }
+         logger.debug("Local node UUID = "+uuid);
       }
       return root;
    }
@@ -171,8 +224,14 @@ public class HomeSharedDataImpl implements HomeSharedData
             FileOutputStream fos = new FileOutputStream(filename);
             DataOutputStream dos = new DataOutputStream(fos);
 
+            dos.writeInt(UUIDs.size());
+            for (UUID id : UUIDs)
+            {
+               dos.writeLong(id.getMostSignificantBits());
+               dos.writeLong(id.getLeastSignificantBits());
+            }
             dos.writeInt(lastLocalRevision);
-            ((DirectoryImpl)root).writeTo(dos, 0);
+            ((DirectoryImpl)root).writeTo(dos, 0, -1);
 
             dos.close();
 
@@ -224,29 +283,61 @@ public class HomeSharedDataImpl implements HomeSharedData
    /**
     * @return the device id
     */
-   public static int getDeviceId()
+   public static int getDeviceId(UUID uuid)
    {
-      return instance.lastLocalRevision >> 24;
+      int id = UUIDs.indexOf(uuid);
+      if (id == -1)
+      {
+         id = UUIDs.indexOf(NO_UUID); // Y a-t-il une place libre ?
+         if (id >= 0) // si oui, on la prend
+         {
+            UUIDs.set(id, uuid);
+         }
+         else // sinon on ajoute un élément
+         {
+            id = UUIDs.size();
+            UUIDs.add(uuid);
+         }
+      }
+      return id;
    }
 
    /**
-    * @return Returns the incremented rootRevision.
+    * Prepare to assign a new local revision, if not already done.
+    *
+    * @return true if not previously locked
     */
-   static int newLocalRevision(boolean commited)
+   static boolean lockRevision()
    {
-      instance.nextLocalRevision = (commited ? 0 : instance.lastLocalRevision+1);
-      return (commited ? ++instance.lastLocalRevision : instance.nextLocalRevision);
+      boolean res = (instance.lockRevisionState == 0);
+      if (res)
+      {
+         instance.lockRevisionState = 1;
+      }
+      return res;
    }
 
    /**
-    * @return Returns the incremented rootRevision.
+    * @return The prepared new local revision.
     */
-   static void commitLocalRevision()
+   static int newRevision()
    {
-      if (instance.nextLocalRevision != 0)
+      assert(instance.lockRevisionState != 0);
+      instance.lockRevisionState = 2;
+      return instance.lastLocalRevision + 1;
+   }
+
+   /**
+    * Commit the new local revision if used, then unlock.
+    */
+   static void unlockRevision()
+   {
+      assert(instance.lockRevisionState != 0);
+      if (instance.lockRevisionState == 2) // il y a eu au moins une modification
       {
          ++instance.lastLocalRevision;
-         instance.nextLocalRevision = 0;
+         TaskManager.addTask(new SendTask(null, instance.lastLocalRevision-1)); // floorRevision = revision-1 pour n'envoyer qu'un diff
       }
+      instance.lockRevisionState = 0;
    }
 }

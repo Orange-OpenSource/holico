@@ -49,4 +49,9 @@ public interface ExpectedData
     * @return the expectedRevision
     */
    public int getExpectedRevision();
+
+   /**
+    * @return the next timeout to operate
+    */
+   public long getTimeout();
 }

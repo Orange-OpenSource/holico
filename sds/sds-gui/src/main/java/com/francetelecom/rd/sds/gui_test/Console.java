@@ -36,7 +36,7 @@ package com.francetelecom.rd.sds.gui_test;
 
 import java.awt.Font;
 import java.io.*;
-import java.util.EventObject;
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.logging.LogManager;
@@ -58,7 +58,7 @@ import com.francetelecom.rd.sds.impl.SendTask;
 /**
  * An example which shows off a functional simple text editor.  Includes a variety of events.
  */
-public class Console extends JFrame implements ValueChangeListener
+public class Console extends JFrame implements DataChangeListener
 {
    // configure log system to use configuration file from classpath : 
    static {
@@ -126,16 +126,9 @@ public class Console extends JFrame implements ValueChangeListener
    {
       instance = new Console();
       home = HomeSharedDataImpl.getInstance();
-      root = home.getRootDirectory(FORCE_REINIT, HOME_FILE_NAME, 0);
-      if (root == null)
-      {
-         instance._display("Saisir le numéro d'équipement...");
-      }
-      else
-      {
-         instance._updatePathLabel();
-         root.addValueChangeListener(instance);
-      }
+      root = home.getRootDirectory(FORCE_REINIT, HOME_FILE_NAME, null);
+      instance._updatePathLabel();
+      root.addDataChangeListener(instance);
       instance.setVisible(true);
       instance.jTextAreaCommand.requestFocus();
    }
@@ -344,50 +337,25 @@ public class Console extends JFrame implements ValueChangeListener
 
    private void performCommand(String cmd)
    {
-      if (root == null)
+      _display("\n---? " + cmd);
+      String val = null;
+      try
       {
-         int id = 0;
-         try
-         {
-            id = Integer.parseInt(cmd);
-         }
-         catch (NumberFormatException exc)
-         {
-         }
-         if ((id > 0) && (id < 128))
-         {
-            root = home.getRootDirectory(FORCE_REINIT, HOME_FILE_NAME, id);
-            _updatePathLabel();
-            root.addValueChangeListener(this);
-            _display("Merci !");
-         }
-         else
-         {
-            _display("Saisir le numéro d'équipement entre 1 et 127...");
-         }
+         val = "---= " + eval(cmd);
       }
-      else
+      catch (DataAccessException e)
       {
-         _display("\n---? " + cmd);
-         String val = null;
-         try
-         {
-            val = "---= " + eval(cmd);
-         }
-         catch (DataAccessException e)
-         {
-            val = "*** " + e.getMessage();
-         }
-         catch (NumberFormatException e)
-         {
-            val = "*** NumberFormatException " + e.getMessage();
-         }
-         catch (InterruptedException e)
-         {
-            doExit();
-         }
-         _display(val);
+         val = "*** " + e.getMessage();
       }
+      catch (NumberFormatException e)
+      {
+         val = "*** NumberFormatException " + e.getMessage();
+      }
+      catch (InterruptedException e)
+      {
+         doExit();
+      }
+      _display(val);
    }
 
    private javax.swing.JTextArea getJTextAreaCommand()
@@ -663,17 +631,44 @@ public class Console extends JFrame implements ValueChangeListener
          {
             if (words[1].equals("listener") && (words.length > 2))
             {
-               //// Test ValueChangeListener. Exemple : test listener a1.a12.a123 ////
+               //// Test DataChangeListener. Exemple : test listener a1.a12.a123 ////
                Console.log("*** Ajout d'un listener sur " + words[2]);
                try
                {
                   root.addValueChangeListener(words[2],
-                        new ValueChangeListener()
+                        new DataChangeListener()
                   {
-                     public void valueChange(EventObject evt)
+                     public void dataChange(ArrayList<DataEvent> events)
                      {
-                        //                              Console.log("La valeur de " + ((DataImpl)evt.getSource()).getName() + " est modifiée !");
-                        Console.log("*** VALUE CHANGE !");
+                        for (DataEvent evt : events)
+                        {
+                           // Console.log("La valeur de " + ((DataImpl)evt.getSource()).getName() + " est modifiée !");
+                           Data src = (Data)evt.getSource();
+                           switch(evt.getType())
+                           {
+                              case DataEvent.DATA_ADDED :
+                                 Console.log("*** Data " + evt.getPathname() + " added to " + src.getPathname());
+                                 break;
+                              case DataEvent.DATA_REMOVED :
+                                 Console.log("*** Data " + evt.getPathname() + " removed from " + src.getPathname());
+                                 break;
+                              case DataEvent.TYPE_CHANGED :
+                                 Console.log("*** Data " + src.getPathname() + " changed to type " + src.getType());
+                                 break;
+                              case DataEvent.VALUE_CHANGED:
+                                 if (src instanceof Parameter)
+                                 {
+                                    Console.log("*** Value changed : " + src.getPathname() + "=" + ((Parameter)src).getValue());
+                                 }
+                                 else
+                                 {
+                                    Console.log("*** Event error on " + src.getPathname());
+                                 }
+                                 break;
+                              default :
+                                 break;
+                           }
+                        }
                      }
                   }
                         );
@@ -702,7 +697,7 @@ public class Console extends JFrame implements ValueChangeListener
             }
             else if (words[1].equals("inc") && (words.length > 4))
             {
-               //// Test ValueChangeListener. Exemple : test inc a1.a2.c 3 1000 ////
+               //// Test DataChangeListener. Exemple : test inc a1.a2.c 3 1000 ////
                Console.log("*** Incrémentation itérative sur " + words[2]);
                final String pathname = words[2];
                final int step = Integer.parseInt(words[3]);
@@ -725,7 +720,7 @@ public class Console extends JFrame implements ValueChangeListener
             }
             else if (words[1].equals("iter") && (words.length > 4))
             {
-               //// Test ValueChangeListener. Exemple : test iter a1.a2.c first second third 1000 ////
+               //// Test DataChangeListener. Exemple : test iter a1.a2.c first second third 1000 ////
                Console.log("*** Affectations itératives sur " + words[2]);
                final String pathname = words[2];
                final String[] values = new String[words.length - 4];
@@ -783,6 +778,7 @@ public class Console extends JFrame implements ValueChangeListener
             _display("exit");
             _display("test listener pathname");
             _display("test inc pathname step interval");
+            _display("test iter pathname val1 val2 ... valN interval");
             _display("test seq1");
             res = "ok";
          }
@@ -791,7 +787,7 @@ public class Console extends JFrame implements ValueChangeListener
       return res;
    }
 
-   public void valueChange(EventObject evt)
+   public void dataChange(ArrayList<DataEvent> events)
    {
       _updatePathLabel();
       if (treeDisplayMode >= 4)

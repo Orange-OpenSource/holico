@@ -91,8 +91,6 @@ public class DashboardPC extends JFrame implements RuleDefinitionsListener {
 
 	// nodes
 	private static Node myNode;
-	private static int sdsId;
-	private static int defaultSdsId = 30;
 	private HomeBusFactory busFactory;
 	private HlcConnector busConnector;
 	private HashMap<String, JPanel> myRulePanelMap;
@@ -120,25 +118,8 @@ public class DashboardPC extends JFrame implements RuleDefinitionsListener {
 	/**
 	 * Launch the application.
 	 */
-	public static void main(String[] args) {
-
-		// retrieve the sds node id from launch argument 
-		if (args.length != 0){
-			if (args[0] != null){
-				sdsId = Integer.parseInt(args[0]);
-				if (sdsId < 1 || sdsId > 126){
-					logger.error("Sds ID not valid; must be an int between 1 and 125. " +
-							"Application will exit");
-					System.exit(0);
-				}
-			}
-		}
-		else {
-			//logger.error("Sds ID missing from launch command! Application will exit");
-			//System.exit(0);
-			sdsId = defaultSdsId;
-		}
-
+	public static void main(String[] args)
+	{
 		Runtime.getRuntime().addShutdownHook(new Thread() {
 			public void run() { 
 				try {
@@ -157,7 +138,8 @@ public class DashboardPC extends JFrame implements RuleDefinitionsListener {
 
 					DashboardPC frame = new DashboardPC();
 
-					frame.busFactory = new HomeBusFactory(sdsId);
+					String nodeId = frame.getIdForType(ID_type_Node);
+					frame.busFactory = new HomeBusFactory(nodeId);
 					try {
 						// temporary solution
 						// fake solution
@@ -167,7 +149,7 @@ public class DashboardPC extends JFrame implements RuleDefinitionsListener {
 						logger.error("Error while sleep before node publish! \n" + e.getMessage());
 					}
 
-					frame.initNode();					
+					frame.initNode(nodeId);
 					frame.initDashboardWithRules();
 
 					frame.setVisible(true);
@@ -282,12 +264,12 @@ public class DashboardPC extends JFrame implements RuleDefinitionsListener {
 		 */
 	}
 
-	private void initNode(){
+	private void initNode(String nodeId){
 		try {
 			// create node
 			//myNode = busFactory.createNode(getNodeId(), getDeviceId(), nodeName);
-			myNode = busFactory.createNode(getIdForType(ID_type_Node), 
-					getIdForType(ID_type_Device), ("dashboardPC-" + String.valueOf(sdsId)));
+			myNode = busFactory.createNode(nodeId, 
+					getIdForType(ID_type_Device), ("dashboardPC-" + nodeId.substring(0, 4)));
 			myNode.setManufacturer("Orange");
 			myNode.setVersion("1.0");
 

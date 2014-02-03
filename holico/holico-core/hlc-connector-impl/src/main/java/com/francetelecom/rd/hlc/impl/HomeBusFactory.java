@@ -30,10 +30,11 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 	http://opensource.org/licenses/BSD-3-Clause
+ *    http://opensource.org/licenses/BSD-3-Clause
  */
 package com.francetelecom.rd.hlc.impl;
 
+import java.util.UUID;
 import java.security.NoSuchAlgorithmException;
 
 import com.francetelecom.rd.holico.logs.Logger;
@@ -43,269 +44,309 @@ import com.francetelecom.rd.hlc.HomeBusException;
 import com.francetelecom.rd.hlc.Node;
 import com.francetelecom.rd.hlc.Rule;
 import com.francetelecom.rd.sds.Directory;
+import com.francetelecom.rd.sds.impl.HomeSharedDataImpl;
 
 /**
  * 
  * @author Pierre Rust (tksh1670)
  * 
  */
-public class HomeBusFactory {
+public class HomeBusFactory
+{
+   // get HomeSharedDataImpl
+   private static final HomeSharedDataImpl hsData = HomeSharedDataImpl.getInstance();
+   private final Directory hsRoot;
 
-	private final SdsAdapter sdsAdapter;
+   private final Logger logger = LoggerFactory.getLogger(HomeBusFactory.class
+         .getName());
 
-	private final Logger logger = LoggerFactory.getLogger(HomeBusFactory.class
-			.getName());
+   /**
+    * 
+    * @param deviceId
+    * @throws NoSuchAlgorithmException
+    */
+   public HomeBusFactory(String nodeId) throws NoSuchAlgorithmException {
 
-	/**
-	 * 
-	 * @param deviceId
-	 * @throws NoSuchAlgorithmException
-	 */
-	public HomeBusFactory(int deviceId) throws NoSuchAlgorithmException {
+      // Initialize SecureRandom
+      // This is a lengthy operation, to be done only upon
+      // initialization of the application
+      Tools.initializaidGeneration();
 
-		// Initialize SecureRandom
-		// This is a lengthy operation, to be done only upon
-		// initialization of the application
-		Tools.initializaidGeneration();
+      // Initialize SDS data
+      boolean forceReinit = true;
+      String filename = null;
+      UUID uuid = null;
+      if (nodeId != null)
+      {
+         try
+         {
+            uuid = UUID.fromString(nodeId);
+         }
+         catch (IllegalArgumentException e)
+         {
+            logger.error("Illegal nodeId found: " + nodeId);
+         }
+      }
+      this.hsRoot = hsData.getRootDirectory(forceReinit, filename, uuid);
 
-		// Initialize SdsAdapter
-		sdsAdapter = new SdsAdapter(deviceId);
-	}
+      /*try
+      {
+         Thread.sleep(1000);
+      }
+      catch (InterruptedException exc)
+      {
+      }*/
+   }
 
-	/**
-	 * Create a new Node. The node will not be published on the Home Bus (and
-	 * thus cannot be used) until you call {@link Node#publishOnHomeBus()}.
-	 * 
-	 * @param nodeId
-	 * @param deviceId
-	 * @param name
-	 * 
-	 * @return the Node
-	 * 
-	 * @throws HomeBusException
-	 * @throws IllegalArgumentException
-	 */
-	public Node createNode(String nodeId, String deviceId, String name)
-			throws HomeBusException, IllegalArgumentException {
+   /**
+    * Create a new Node. The node will not be published on the Home Bus (and
+    * thus cannot be used) until you call {@link Node#publishOnHomeBus()}.
+    * 
+    * @param nodeId
+    * @param deviceId
+    * @param name
+    * 
+    * @return the Node
+    * 
+    * @throws HomeBusException
+    * @throws IllegalArgumentException
+    */
+   public Node createNode(String nodeId, String deviceId, String name)
+         throws HomeBusException, IllegalArgumentException {
 
-		// Pre-conditions
-		if (nodeId == null || nodeId.length() == 0) {
-			logger.error("Illegal nodeId: " + nodeId);
-			throw new IllegalArgumentException("Illegal nodeId: " + nodeId);
-		}
-		if (deviceId == null || deviceId.length() == 0) {
-			logger.error("Illegal deviceId: " + deviceId);
-			throw new IllegalArgumentException("Illegal deviceId: " + deviceId);
-		}
-		if (name == null || name.length() == 0) {
-			logger.error("Illegal name: " + name);
-			throw new IllegalArgumentException("Illegal name: " + name);
-		}
+      // Pre-conditions
+      if (nodeId == null || nodeId.length() == 0) {
+         logger.error("Illegal nodeId: " + nodeId);
+         throw new IllegalArgumentException("Illegal nodeId: " + nodeId);
+      }
+      if (deviceId == null || deviceId.length() == 0) {
+         logger.error("Illegal deviceId: " + deviceId);
+         throw new IllegalArgumentException("Illegal deviceId: " + deviceId);
+      }
+      if (name == null || name.length() == 0) {
+         logger.error("Illegal name: " + name);
+         throw new IllegalArgumentException("Illegal name: " + name);
+      }
 
-		NodeImpl newNode = new NodeImpl(nodeId, deviceId, name, sdsAdapter);
+      NodeImpl newNode = new NodeImpl(nodeId, deviceId, name, hsData);
 
-		assert newNode != null;
-		return newNode;
-	}
+      assert newNode != null;
+      return newNode;
+   }
 
-	/**
-	 * Create a new Condition.
-	 * 
-	 * @param operator
-	 * @param targetValue
-	 * @param resourcePath
-	 * 
-	 * @return the Condition
-	 * 
-	 * @throws HomeBusException
-	 * @throws IllegalArgumentException
-	 */
-	public Condition createCondition(int operator, Object targetValue,
-			String resourcePath) throws HomeBusException,
-			IllegalArgumentException {
+   /**
+    * Create a new Condition.
+    * 
+    * @param operator
+    * @param targetValue
+    * @param resourcePath
+    * 
+    * @return the Condition
+    * 
+    * @throws HomeBusException
+    * @throws IllegalArgumentException
+    */
+   public Condition createCondition(int operator, Object targetValue,
+         String resourcePath) throws HomeBusException,
+         IllegalArgumentException {
 
-		// Pre-conditions
-		if (operator != Condition.OPERATOR_DIFF
-				&& operator != Condition.OPERATOR_EQUAL
-				&& operator != Condition.OPERATOR_INF
-				&& operator != Condition.OPERATOR_INFEQUAL
-				&& operator != Condition.OPERATOR_SUP
-				&& operator != Condition.OPERATOR_SUPEQUAL) {
-			logger.error("Illegal operator: " + operator);
-			throw new IllegalArgumentException("Illegal operator: " + operator);
-		}
-		if (targetValue == null) {
-			logger.error("Illegal targetValue: " + targetValue);
-			throw new IllegalArgumentException("Illegal targetValue: "
-					+ targetValue);
-		}
-		if (resourcePath == null || resourcePath.length() == 0) {
-			logger.error("Illegal resourcePath: " + resourcePath);
-			throw new IllegalArgumentException("Illegal resourcePath: "
-					+ resourcePath);
-		}
+      // Pre-conditions
+      if (operator != Condition.OPERATOR_DIFF
+            && operator != Condition.OPERATOR_EQUAL
+            && operator != Condition.OPERATOR_INF
+            && operator != Condition.OPERATOR_INFEQUAL
+            && operator != Condition.OPERATOR_SUP
+            && operator != Condition.OPERATOR_SUPEQUAL) {
+         logger.error("Illegal operator: " + operator);
+         throw new IllegalArgumentException("Illegal operator: " + operator);
+      }
+      if (targetValue == null) {
+         logger.error("Illegal targetValue: " + targetValue);
+         throw new IllegalArgumentException("Illegal targetValue: "
+               + targetValue);
+      }
+      if (resourcePath == null || resourcePath.length() == 0) {
+         logger.error("Illegal resourcePath: " + resourcePath);
+         throw new IllegalArgumentException("Illegal resourcePath: "
+               + resourcePath);
+      }
 
-		ConditionImpl condition = null;
+      ConditionImpl condition = null;
 
-		if (targetValue instanceof String) {
-			condition = new ConditionImpl(sdsAdapter.getRoot(), operator,
-					(String) targetValue, resourcePath);
-		} else if (targetValue instanceof Integer) {
-			condition = new ConditionImpl(sdsAdapter.getRoot(), operator,
-					((Integer) targetValue).intValue(), resourcePath);
-		} else if (targetValue instanceof Boolean) {
-			condition = new ConditionImpl(sdsAdapter.getRoot(), operator,
-					((Boolean) targetValue).booleanValue(), resourcePath);
-		}
+      if (targetValue instanceof String) {
+         condition = new ConditionImpl(hsRoot, operator,
+               (String) targetValue, resourcePath);
+      } else if (targetValue instanceof Integer) {
+         condition = new ConditionImpl(hsRoot, operator,
+               ((Integer) targetValue).intValue(), resourcePath);
+      } else if (targetValue instanceof Boolean) {
+         condition = new ConditionImpl(hsRoot, operator,
+               ((Boolean) targetValue).booleanValue(), resourcePath);
+      }
 
-		assert condition != null;
-		return condition;
-	}
+      assert condition != null;
+      return condition;
+   }
 
-	/**
-	 * Create a new Rule.
-	 * 
-	 * @param name
-	 * @param condition
-	 * @param serviceReference
-	 * @param argument
-	 * @param isPrivate
-	 * @param nodeOwner
-	 * 
-	 * @return the Rule
-	 * 
-	 * @throws HomeBusException
-	 * @throws IllegalArgumentException
-	 */
-	public Rule createRule(String name, Condition condition,
-			String serviceReference, String argument, boolean isPrivate,
-			String nodeOwner) throws HomeBusException, IllegalArgumentException {
+   /**
+    * Create a new Rule.
+    * 
+    * @param name
+    * @param condition
+    * @param serviceReference
+    * @param argument
+    * @param isPrivate
+    * @param nodeOwner
+    * 
+    * @return the Rule
+    * 
+    * @throws HomeBusException
+    * @throws IllegalArgumentException
+    */
+   public Rule createRule(String name, Condition condition,
+         String serviceReference, String argument, boolean isPrivate,
+         String nodeOwner) throws HomeBusException, IllegalArgumentException {
 
-		// Pre-conditions
-		if (name == null || name.length() == 0) {
-			logger.error("Illegal name: " + name);
-			throw new IllegalArgumentException("Illegal name: " + name);
-		}
-		if (condition == null) {
-			logger.error("Illegal condition: " + condition);
-			throw new IllegalArgumentException("Illegal condition: "
-					+ condition);
-		}
-		if (serviceReference == null || serviceReference.length() == 0) {
-			logger.error("Illegal serviceReference: " + serviceReference);
-			throw new IllegalArgumentException("Illegal serviceReference: "
-					+ serviceReference);
-		}
-		if (argument == null) {
-			logger.error("Illegal argument: " + argument);
-			throw new IllegalArgumentException("Illegal argument: " + argument);
-		}
-		if (nodeOwner == null || nodeOwner.length() == 0) {
-			logger.error("Illegal nodeOwner: " + nodeOwner);
-			throw new IllegalArgumentException("Illegal nodeOwner: "
-					+ nodeOwner);
-		}
+      // Pre-conditions
+      if (name == null || name.length() == 0) {
+         logger.error("Illegal name: " + name);
+         throw new IllegalArgumentException("Illegal name: " + name);
+      }
+      if (condition == null) {
+         logger.error("Illegal condition: " + condition);
+         throw new IllegalArgumentException("Illegal condition: "
+               + condition);
+      }
+      if (serviceReference == null || serviceReference.length() == 0) {
+         logger.error("Illegal serviceReference: " + serviceReference);
+         throw new IllegalArgumentException("Illegal serviceReference: "
+               + serviceReference);
+      }
+      if (argument == null) {
+         logger.error("Illegal argument: " + argument);
+         throw new IllegalArgumentException("Illegal argument: " + argument);
+      }
+      if (nodeOwner == null || nodeOwner.length() == 0) {
+         logger.error("Illegal nodeOwner: " + nodeOwner);
+         throw new IllegalArgumentException("Illegal nodeOwner: "
+               + nodeOwner);
+      }
 
-		RuleImpl newRule = new RuleImpl(name, condition, serviceReference,
-				argument, isPrivate, nodeOwner);
+      RuleImpl newRule = new RuleImpl(name, condition, serviceReference,
+            argument, isPrivate, nodeOwner);
 
-		assert newRule != null;
-		return newRule;
-	}
+      assert newRule != null;
+      return newRule;
+   }
 
-	/**
-	 * Create a new Rule from ruleId (use to update a existing rule)
-	 * 
-	 * @param ruleId
-	 * @param name
-	 * @param condition
-	 * @param serviceReference
-	 * @param argument
-	 * @param isPrivate
-	 * @param nodeOwner
-	 * 
-	 * @return the Rule
-	 * 
-	 * @throws HomeBusException
-	 * @throws IllegalArgumentException
-	 */
-	public Rule createRule(String ruleId, String name, Condition condition,
-			String serviceReference, String argument, boolean isPrivate,
-			String nodeOwner) throws HomeBusException, IllegalArgumentException {
+   /**
+    * Create a new Rule from ruleId (use to update a existing rule)
+    * 
+    * @param ruleId
+    * @param name
+    * @param condition
+    * @param serviceReference
+    * @param argument
+    * @param isPrivate
+    * @param nodeOwner
+    * 
+    * @return the Rule
+    * 
+    * @throws HomeBusException
+    * @throws IllegalArgumentException
+    */
+   public Rule createRule(String ruleId, String name, Condition condition,
+         String serviceReference, String argument, boolean isPrivate,
+         String nodeOwner) throws HomeBusException, IllegalArgumentException {
 
-		// Pre-conditions
-		if (ruleId == null || ruleId.length() == 0) {
-			logger.error("Illegal ruleId: " + ruleId);
-			throw new IllegalArgumentException("Illegal ruleId: " + ruleId);
-		}
-		if (name == null || name.length() == 0) {
-			logger.error("Illegal name: " + name);
-			throw new IllegalArgumentException("Illegal name: " + name);
-		}
-		if (condition == null) {
-			logger.error("Illegal condition: " + condition);
-			throw new IllegalArgumentException("Illegal condition: "
-					+ condition);
-		}
-		if (serviceReference == null || serviceReference.length() == 0) {
-			logger.error("Illegal serviceReference: " + serviceReference);
-			throw new IllegalArgumentException("Illegal serviceReference: "
-					+ serviceReference);
-		}
-		if (argument == null) {
-			logger.error("Illegal argument: " + argument);
-			throw new IllegalArgumentException("Illegal argument: " + argument);
-		}
-		if (nodeOwner == null || nodeOwner.length() == 0) {
-			logger.error("Illegal nodeOwner: " + nodeOwner);
-			throw new IllegalArgumentException("Illegal nodeOwner: "
-					+ nodeOwner);
-		}
+      // Pre-conditions
+      if (ruleId == null || ruleId.length() == 0) {
+         logger.error("Illegal ruleId: " + ruleId);
+         throw new IllegalArgumentException("Illegal ruleId: " + ruleId);
+      }
+      if (name == null || name.length() == 0) {
+         logger.error("Illegal name: " + name);
+         throw new IllegalArgumentException("Illegal name: " + name);
+      }
+      if (condition == null) {
+         logger.error("Illegal condition: " + condition);
+         throw new IllegalArgumentException("Illegal condition: "
+               + condition);
+      }
+      if (serviceReference == null || serviceReference.length() == 0) {
+         logger.error("Illegal serviceReference: " + serviceReference);
+         throw new IllegalArgumentException("Illegal serviceReference: "
+               + serviceReference);
+      }
+      if (argument == null) {
+         logger.error("Illegal argument: " + argument);
+         throw new IllegalArgumentException("Illegal argument: " + argument);
+      }
+      if (nodeOwner == null || nodeOwner.length() == 0) {
+         logger.error("Illegal nodeOwner: " + nodeOwner);
+         throw new IllegalArgumentException("Illegal nodeOwner: "
+               + nodeOwner);
+      }
 
-		RuleImpl newRule = new RuleImpl(ruleId, name, condition,
-				serviceReference, argument, isPrivate, nodeOwner);
+      RuleImpl newRule = new RuleImpl(ruleId, name, condition,
+            serviceReference, argument, isPrivate, nodeOwner);
 
-		assert newRule != null;
-		return newRule;
-	}
+      assert newRule != null;
+      return newRule;
+   }
 
-	/**
-	 * <b>WARNING !! </b> This method is only here to allow direct access to the
-	 * HS tree for Unit tests, it should <b>NEVER</b> be used outside tests.
-	 * 
-	 * @return
-	 */
-	protected Directory getHsRoot() {
-		return sdsAdapter.getRoot();
+   /**
+    * <b>WARNING !! </b> This method is only here to allow direct access to the
+    * HS tree for Unit tests, it should <b>NEVER</b> be used outside tests.
+    * 
+    * @return
+    */
+   protected Directory getHsRoot() {
+      return hsRoot;
 
-	}
+   }
 
+   /**
+    * Acquires the lock to access to the shared data structure.
+    */
+   public static void lock()
+   {
+      hsData.lock();
+   }
 
-	/**
-	 * 
-	 * 
-	 * @return
-	 */
-	public String generateNodeId() {
+   /**
+    * Releases the lock.
+    */
+   public static void unlock()
+   {
+      hsData.unlock();
+   }
 
-		return Tools.generateId();
-	}
+   /**
+    * 
+    * 
+    * @return
+    */
+   public String generateNodeId() {
 
-	/**
-	 * 
-	 * 
-	 * @return
-	 */
-	public String generateDeviceId() {
+      return Tools.generateId();
+   }
 
-		return Tools.generateId();
-	}
+   /**
+    * 
+    * 
+    * @return
+    */
+   public String generateDeviceId() {
 
-	/**
-	 * 
-	 * @return
-	 */
-	public String generateServiceId() {
-		return Tools.generateId();
-	}
+      return Tools.generateId();
+   }
+
+   /**
+    * 
+    * @return
+    */
+   public String generateServiceId() {
+      return Tools.generateId();
+   }
 }

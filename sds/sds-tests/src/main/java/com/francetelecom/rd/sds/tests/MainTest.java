@@ -34,7 +34,7 @@
  */
 package com.francetelecom.rd.sds.tests;
 
-import java.util.EventObject;
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -43,7 +43,8 @@ import com.francetelecom.rd.sds.DataAccessException;
 import com.francetelecom.rd.sds.Directory;
 import com.francetelecom.rd.sds.HomeSharedData;
 import com.francetelecom.rd.sds.Parameter;
-import com.francetelecom.rd.sds.ValueChangeListener;
+import com.francetelecom.rd.sds.DataChangeListener;
+import com.francetelecom.rd.sds.DataEvent;
 import com.francetelecom.rd.sds.impl.HomeSharedDataImpl;
 
 public class MainTest {
@@ -55,14 +56,12 @@ public class MainTest {
 	static String publishPath ;
 	private int publishCounter;
 
-	public MainTest(int sdsId) {
-
-		assert (sdsId > 0 && sdsId < 125);
+	public MainTest() {
 
 		hsd = HomeSharedDataImpl.getInstance();
 		assert (hsd != null);
 
-		root = hsd.getRootDirectory(true, null, sdsId);
+		root = hsd.getRootDirectory(true, null, null);
 		assert (root != null);
 		
 		timer = new Timer();
@@ -70,26 +69,20 @@ public class MainTest {
 	}
 
 	public static void main(String[] args) throws InterruptedException {
-		System.out.println("usage : <sdsId> <command> <arg>");
+		System.out.println("usage : <command> <arg>");
 		System.out.println(" where <command> = listen | publish");
 
-		int sdsId = Integer.parseInt(args[0]);
-		if (sdsId < 1 || sdsId > 125) {
-			System.out.println(" sdsId must be > 1 and < 125 ");
-			return;
-		}
+		MainTest main = new MainTest();
 
-		MainTest main = new MainTest(sdsId);
-
-		String command = args[1];
+		String command = args[0];
 		if ("listen".equals(command)) {
 
-			String path = args[2];
+			String path = args[1];
 
 			main.startListener(path);
 
 		} else if ("publish".equals(command)) {
-			publishPath = args[2];
+			publishPath = args[1];
 
 			main.startPeriodicDataUpdate(publishPath);
 		}
@@ -107,26 +100,28 @@ public class MainTest {
 		if (root.contains( path)) {
 
 			try {
-				root.addValueChangeListener(path, new ValueChangeListener() {
-	
+				root.addValueChangeListener(path, new DataChangeListener()
+				{
 					@Override
-					public void valueChange(EventObject evt) {
-	
-						Data data = (Data) evt.getSource();
-						System.out.println("Value Changed for Path "
-								+ data.getPathname());
-						if (data instanceof Parameter) {
-	
-							Parameter param = (Parameter) data;
-							System.out.println("It's a param, new value is "
-									+ param.getValue());
-	
-						} else if (data instanceof Directory) {
-	
-							System.out.println(" It's a directory");
-	
-						}
-	
+					public void dataChange(ArrayList<DataEvent> events)
+					{
+	               for (DataEvent evt : events)
+	               {
+   						Data data = (Data) evt.getSource();
+   						System.out.println("Value Changed for Path "
+   								+ data.getPathname());
+   						if (data instanceof Parameter) {
+   	
+   							Parameter param = (Parameter) data;
+   							System.out.println("It's a param, new value is "
+   									+ param.getValue());
+   	
+   						} else if (data instanceof Directory) {
+   	
+   							System.out.println(" It's a directory");
+   	
+   						}
+	               }
 					}
 				});
 			} catch (DataAccessException e) {

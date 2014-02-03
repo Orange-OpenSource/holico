@@ -41,7 +41,7 @@ import com.francetelecom.rd.sds.Data;
 import com.francetelecom.rd.sds.DataAccessException;
 import com.francetelecom.rd.sds.Directory;
 import com.francetelecom.rd.sds.Parameter;
-import com.francetelecom.rd.sds.ValueChangeListener;
+import com.francetelecom.rd.sds.DataChangeListener;
 import com.francetelecom.rd.sds.impl.DirectoryImpl;
 import com.francetelecom.rd.sds.impl.HomeSharedDataImpl;
 
@@ -49,7 +49,6 @@ public class ParameterTest extends TestCase {
 
 	// ==============================================================================
 
-	int deviceId = 125;
 	String paramPath = "my_path";
 	String dirPath = "my_dir";
 
@@ -64,7 +63,7 @@ public class ParameterTest extends TestCase {
 					
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
 
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
 	}
 

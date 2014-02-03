@@ -34,14 +34,14 @@
  */
 package com.francetelecom.rd.sds;
 
-import java.util.EventObject;
+import java.util.ArrayList;
 
 /**
  * An interface for the ValueChangerListener listeners.
  *
  * @author goul5436
  */
-public interface ValueChangeListener
+public interface DataChangeListener
 {
-   public void valueChange(EventObject evt);
+   public void dataChange(ArrayList<DataEvent> events);
 }

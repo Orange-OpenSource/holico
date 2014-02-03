@@ -101,13 +101,15 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 	private CustomNodeListModel nodeListModel;
 
 	// for home bus
-	private HomeBusFactory busFactory;
+	private HomeBusFactory busFactory = null;
 	private HlcConnector busConnector;
 	// myNode must be static because we have a shutdownhook that will unpublish 
 	// the node if the application is closed brutally with ctrl+c 
 	public static Node myNode = null;
 	private HashMap<String, NodeInfo> listNodes;
 	private LinkedList<CustomListElement> nodeListElements;
+   private boolean alreadySubcribed = false;
+
 	private static final String resourceToPublishPath = "Heat.Temperature";
 	private static final String resourceToPublishName = "temperature";
 	private static final String ruleName = "ResourceValueChange";
@@ -637,11 +639,12 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 				// in the case where the node is published, unpublished, 
 				// and published again, we must not create it again
 				// (at the second publication)
-				busFactory = new HomeBusFactory(sdsId);
-				
+			   String nodeId = getIdForType(ID_type_Node);
+				if (busFactory == null) { busFactory = new HomeBusFactory(nodeId); }
+
 				// create node
 				//myNode = busFactory.createNode(getNodeId(), getDeviceId(), nodeName);
-				myNode = busFactory.createNode(getIdForType(ID_type_Node), 
+				myNode = busFactory.createNode(nodeId, 
 						getIdForType(ID_type_Device), nodeName);
 				myNode.setManufacturer(manufacturer);
 				myNode.setVersion(version);
@@ -654,7 +657,7 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 				// publish node
 				myNode.publishOnHomeBus();
 				logger.info("Node is published");
-				
+
 				busConnector = myNode.getHlcConnector();
 				textServiceId.setText(getIdForType(ID_type_Service));
 				isNodePublished = true;
@@ -671,11 +674,15 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 			}
 
 			if (isNodePublished) {
-				// listen for node discovery
-				busConnector.addNodeDiscoveryListener(this); 
-				// listen for rule discovery
-				busConnector.addRuleDefinitionsListener(this);				
-				
+			   if (!alreadySubcribed)
+			   {
+				   // listen for node discovery
+				   busConnector.addNodeDiscoveryListener(this); 
+				   // listen for rule discovery
+				   busConnector.addRuleDefinitionsListener(this);
+				   alreadySubcribed = true;
+			   }
+
 				try {
 					NodeInfo[] existingNodes = busConnector.getAllNodes(true);
 					for(int i = 0; i < existingNodes.length; i++){

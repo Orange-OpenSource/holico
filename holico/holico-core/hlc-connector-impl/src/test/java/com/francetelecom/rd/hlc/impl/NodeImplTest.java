@@ -51,8 +51,7 @@ public class NodeImplTest extends TestCase {
 	HomeBusFactory factory;
 
 	protected void setUp() throws Exception {
-		int deviceId = 125;
-		factory = new HomeBusFactory(deviceId);
+		factory = new HomeBusFactory(null);
 		// Directory hsRoot = factory.getHsRoot();
 		// recursiveDelete(hsRoot);
 

@@ -144,7 +144,7 @@ class Test
     */
    public static void main(String[] args)
    {
-      Directory home = HomeSharedDataImpl.getInstance().getRootDirectory(true, null, 1);
+      Directory home = HomeSharedDataImpl.getInstance().getRootDirectory(true, null, null);
       test2(home);
       System.exit(0);
    }

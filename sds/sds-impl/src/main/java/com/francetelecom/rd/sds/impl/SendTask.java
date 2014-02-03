@@ -121,6 +121,15 @@ public class SendTask implements Runnable, ExpectedData
    }
 
    /**
+    * @param d delay for first sending
+    */
+   public void setDelay(long d)
+   {
+      this.timeout = System.currentTimeMillis() + d;
+      delay = RETRANSMISSION_DELAY / 2;
+   }
+
+   /**
     * @return if this message is out of date
     */
    public boolean isOutOfDate()
@@ -189,6 +198,11 @@ public class SendTask implements Runnable, ExpectedData
                {
                   logger.info("message is too big : " + msg.length);
                   msg = new DataMessage(data, -1).getBytes();
+                  if (msg.length > channel.getMaxBytes()) // encore trop gros !
+                  {
+                     logger.info("message is still too big : " + msg.length);
+                     msg = new DataMessage(data, -1, 1).getBytes();
+                  }
                }
                revision = data.getRevision();
                channel.send(msg);
@@ -212,6 +226,7 @@ public class SendTask implements Runnable, ExpectedData
                if ((expectedRevision != 0) && (data.revision == expectedRevision) && (data.value != null))
                {
                   logger.info("ALREADY RECEIVED " + logPathName + " " + data.fullRevisionToString());
+                  TaskManager.removePendingRequest(logPathName, expectedRevision);
                }
                else
                {

@@ -74,8 +74,7 @@ public class HomeCmd implements NodeDiscoveryListener, RuleDefinitionsListener{
 
 		Scanner c = new Scanner(System.in);
         
-		System.out.println("Usage : java -jar <holico-node-simulator-cli.jar> <sdsId>");
-        System.out.println("\t <sdsId> must be unique for your holico bus and between   1 and 125 \n\n");
+		System.out.println("Usage : java -jar <holico-node-simulator-cli.jar>");
 		
 		System.out.println("possible commands :");
 		System.out.println("\t\t set intValue // set intValue on resource " + resourceToPublishPath);
@@ -83,14 +82,8 @@ public class HomeCmd implements NodeDiscoveryListener, RuleDefinitionsListener{
 		System.out.println("\t\t rule remove // remove rule for resource value change detection");
 		System.out.println("\t\t exit");
 		
-		int sdsId = Integer.parseInt(args[0]);
-		if (sdsId < 1 || sdsId > 125) {
-			System.out.println(" sdsId must be > 1 and < 125 ");
-			return;
-		}
-		
 		HomeCmd tool = new HomeCmd();
-		tool.initNode(sdsId);
+		tool.initNode();
 		
 		boolean exit = false;
 		
@@ -142,8 +135,8 @@ public class HomeCmd implements NodeDiscoveryListener, RuleDefinitionsListener{
 		System.exit(0);
 	}
 
-	private void initNode(int sdsId){
-		
+	private void initNode()
+	{	
 		serviceCallback = new NodeServiceCallback() {
 
 			@Override
@@ -181,12 +174,12 @@ public class HomeCmd implements NodeDiscoveryListener, RuleDefinitionsListener{
 			// in the case where the node is published, unpublished, 
 			// and published again, we must not create it again
 			// (at the second publication)
-			busFactory = new HomeBusFactory(sdsId);
-			
+		   String nodeId = getIdForType(ID_type_Node);
+			busFactory = new HomeBusFactory(nodeId);
+
 			// create node
 			//myNode = busFactory.createNode(getNodeId(), getDeviceId(), nodeName);
-			myNode = busFactory.createNode(getIdForType(ID_type_Node), 
-					getIdForType(ID_type_Device), ("agoraNode" + String.valueOf(sdsId)));
+			myNode = busFactory.createNode(nodeId, getIdForType(ID_type_Device), ("agoraNode-" + nodeId.substring(0, 4)));
 			myNode.setManufacturer("Orange");
 			myNode.setVersion("1.0");
 			// declare service for the value change of the publish parameter

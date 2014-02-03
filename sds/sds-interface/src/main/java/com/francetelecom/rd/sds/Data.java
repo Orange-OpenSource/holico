@@ -79,18 +79,23 @@ public interface Data
    public long getTimestamp();
 
    /**
+    * Marks the data as modified.
+    */
+   public void touch();
+
+   /**
     * Adds the specified listener to received notification events when the value of this data changes.
     *  
-    * @param listener the ValueChangeListener
+    * @param listener the DataChangeListener
     */
-   public void addValueChangeListener(ValueChangeListener listener);
+   public void addDataChangeListener(DataChangeListener listener);
 
    /**
     * Removes the listener previously specified.
     * 
     * @param listener to remove
     */
-   public void removeValueChangeListener(ValueChangeListener listener);
+   public void removeDataChangeListener(DataChangeListener listener);
 
    /**
     * 

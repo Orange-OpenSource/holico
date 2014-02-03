@@ -32,8 +32,7 @@
  *
  * 	http://opensource.org/licenses/BSD-3-Clause
  */
-import java.io.File;
-import java.util.EventObject;
+import java.util.ArrayList;
 
 import junit.framework.TestCase;
 
@@ -41,15 +40,14 @@ import com.francetelecom.rd.sds.Data;
 import com.francetelecom.rd.sds.DataAccessException;
 import com.francetelecom.rd.sds.Directory;
 import com.francetelecom.rd.sds.Parameter;
-import com.francetelecom.rd.sds.ValueChangeListener;
-import com.francetelecom.rd.sds.impl.DirectoryImpl;
+import com.francetelecom.rd.sds.DataChangeListener;
+import com.francetelecom.rd.sds.DataEvent;
 import com.francetelecom.rd.sds.impl.HomeSharedDataImpl;
 
 public class DirectoryTest extends TestCase {
 
 	// ==============================================================================
 
-	int deviceId = 125;
 	String paramPath = "my_path";
 	String dirPath = "my_dir";
 
@@ -64,7 +62,7 @@ public class DirectoryTest extends TestCase {
 					
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
 
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
 	}
 
@@ -407,11 +405,11 @@ public class DirectoryTest extends TestCase {
 	public void test_addValueChangeListenerCurrentDir() throws Exception 
 	{		
 		// declare custom listener for test
-		class CustomListener implements ValueChangeListener{
+		class CustomListener implements DataChangeListener{
 
 			int nbOfNotif = 0;
 			
-			public void valueChange(EventObject evt) {
+			public void dataChange(ArrayList<DataEvent> events) {
 				nbOfNotif++;
 			}
 			
@@ -424,7 +422,7 @@ public class DirectoryTest extends TestCase {
 		CustomListener listener = new CustomListener();
 		
 		// register to notif on root
-		hsRoot.addValueChangeListener(listener);
+		hsRoot.addDataChangeListener(listener);
 		
 		// create a new boolean data
 		Data myData1 = hsRoot.newData(paramPath, Data.TYPE_BOOL, true);
@@ -450,11 +448,11 @@ public class DirectoryTest extends TestCase {
 	public void test_addValueChangeListenerOnSubDir() throws Exception 
 	{		
 		// declare custom listener for test
-		class CustomListener implements ValueChangeListener{
+		class CustomListener implements DataChangeListener{
 
 			int nbOfNotif = 0;
 			
-			public void valueChange(EventObject evt) {
+			public void dataChange(ArrayList<DataEvent> events) {
 				nbOfNotif++;
 			}
 			
@@ -462,7 +460,7 @@ public class DirectoryTest extends TestCase {
 				return nbOfNotif;
 			}
 		};
-		
+
 		// create the listener
 		CustomListener listener = new CustomListener();
 		
@@ -499,11 +497,11 @@ public class DirectoryTest extends TestCase {
 	public void test_removeValueChangeListenerCurrentDir() throws Exception 
 	{		
 		// declare custom listener for test
-		class CustomListener implements ValueChangeListener{
+		class CustomListener implements DataChangeListener{
 
 			int nbOfNotif = 0;
 			
-			public void valueChange(EventObject evt) {
+			public void dataChange(ArrayList<DataEvent> evt) {
 				nbOfNotif++;
 			}
 			
@@ -516,7 +514,7 @@ public class DirectoryTest extends TestCase {
 		CustomListener listener = new CustomListener();
 		
 		// register to notif on root
-		hsRoot.addValueChangeListener(listener);
+		hsRoot.addDataChangeListener(listener);
 		
 		// create a new boolean data
 		Data myData1 = hsRoot.newData(paramPath, Data.TYPE_BOOL, true);
@@ -529,7 +527,7 @@ public class DirectoryTest extends TestCase {
 		assertEquals(1, listener.getNbOfNotif());
 		
 		// unregister to notif on root
-		hsRoot.removeValueChangeListener(listener);
+		hsRoot.removeDataChangeListener(listener);
 				
 		// create a new boolean data
 		Data myData2 = hsRoot.newData(paramPath + "2", Data.TYPE_BOOL, true);

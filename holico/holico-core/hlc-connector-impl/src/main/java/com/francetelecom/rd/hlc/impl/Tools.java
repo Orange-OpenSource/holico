@@ -72,7 +72,7 @@ public class Tools {
 			// 0-255 and not GUID ?
 			boolean forceReinit = true;
 			String filename = null;
-			hsRoot = hsData.getRootDirectory(forceReinit, filename, deviceId);
+			hsRoot = hsData.getRootDirectory(forceReinit, filename, null);
 		}
 
 		Data[] data = hsRoot.getChildren();
@@ -131,9 +131,10 @@ public class Tools {
 
 			// get its digest
 			MessageDigest sha = MessageDigest.getInstance("SHA-1");
-			byte[] result = sha.digest(randomNum.getBytes());
+			byte[] r = sha.digest(randomNum.getBytes());
 
-			id = hexEncode(result);
+			// build the UUID string with the first 16 bytes
+			id = String.format("%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12], r[13], r[14], r[15]);
 			logger.info("new Id Generated : " + id);
 
 		} catch (NoSuchAlgorithmException ex) {
@@ -148,36 +149,6 @@ public class Tools {
 		// POST condition
 		assert (id != null) && (id.length() != 0);
 		return id;
-	}
-
-	/**
-	 * The byte[] returned by MessageDigest does not have a nice textual
-	 * representation, so some form of encoding is usually performed.
-	 * 
-	 * This implementation follows the example of David Flanagan's book
-	 * "Java In A Nutshell", and converts a byte array into a String of hex
-	 * characters.
-	 * 
-	 * Another popular alternative is to use a "Base64" encoding.
-	 */
-	static private String hexEncode(byte[] aInput) {
-		// Precondition
-		assert aInput != null && aInput.length != 0;
-
-		// No string builder in java cdc ( ~=1.4) !!
-		String result = new String();
-
-		char[] digits = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-				'a', 'b', 'c', 'd', 'e', 'f' };
-		for (int idx = 0; idx < aInput.length; ++idx) {
-			byte b = aInput[idx];
-			result = result + String.valueOf(digits[(b & 0xf0) >> 4]);
-			result = result + String.valueOf(digits[b & 0x0f]);
-		}
-
-		// Post condition
-		assert result != null && result.length() != 0;
-		return result;
 	}
 
 	// ==============================================================================

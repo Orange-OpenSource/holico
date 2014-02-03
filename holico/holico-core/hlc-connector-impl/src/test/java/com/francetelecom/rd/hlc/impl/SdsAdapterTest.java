@@ -44,7 +44,6 @@ public class SdsAdapterTest extends TestCase {
 
 	// ==============================================================================
 
-	int deviceId = 125;
 	HomeBusFactory factory;
 	Directory hsRoot;
 
@@ -54,7 +53,7 @@ public class SdsAdapterTest extends TestCase {
 
 		System.out.println(" Global setup " + SdsAdapterTest.class.getName());
 
-		factory = new HomeBusFactory(deviceId);
+		factory = new HomeBusFactory(null);
 		hsRoot = factory.getHsRoot();
 		recursiveDelete(hsRoot);
 	}

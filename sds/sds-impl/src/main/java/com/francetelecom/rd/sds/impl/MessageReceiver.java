@@ -71,18 +71,18 @@ public class MessageReceiver implements DataReceiver
          long time = System.currentTimeMillis();
          //Console.log("Paquet recu de : " + packet.getAddress().getHostName() + " Taille : " + packet.getLength());
 
-         taskManager.lockUnconditionally();
+         taskManager.lockIntra();
          try
          {
             DataMessage msg = DataMessage.bytesToData(data);
             int devId = msg.getDeviceId();
-            if (devId != (HomeSharedDataImpl.getDeviceId())) // on vérifie que c'est pas notre propre message
+            if (devId != 0) // on vérifie que c'est pas notre propre message
             {
                if (msg.isRequest())
                {
                   logger.info("RECEIVE A REQUEST FROM " + devId + " ON '" + msg.getPathname() + "'");
 
-                  TaskManager.addTask(new ResponseToRequestForDataTask(msg.getPathname(), msg.getExpectedRevision(), msg.getFloorRevision()));
+                  TaskManager.addTask(new RequestToRespondTask(msg.getPathname(), msg.getExpectedRevision(), msg.getFloorRevision()));
                }
                else if (msg.isAck())
                {
@@ -101,20 +101,21 @@ public class MessageReceiver implements DataReceiver
                      logger.debug("received a root sds message");
 
                      compar = ((DirectoryImpl)HomeSharedDataImpl.getRootDirectory())._revcmp(sdsData);
-                     if (compar == 1) // sdsData > root, cas "normal" : on reçoit un sds plus récent
+                     if (compar <= 1) // sdsData >= root, cas "normal" : on reçoit un sds plus récent
                      {
-                        logger.debug("sdsData > root => send an ACK for this message");
+                        logger.debug("received >= root => send an ACK for this message");
                         TaskManager.addTask(new SendTask(null, -2, sdsData.getRevision())); // pour l'envoi de l'acquittement
+                        TaskManager.removePendingRequest(null, 0); // On supprime les éventuelles requêtes sur root en attente
                      }
                      else if (compar == 2) // Réception d'une révision de root < révision locale => maj distante nécessaire
                      {
-                        logger.debug("root < local revision => remote update required");
-                        TaskManager.addTask(new SendTask(null, sdsData.getRevision()));
+                        logger.debug("root received < local => remote update required");
+                        TaskManager.addTask(new SendTask(null, sdsData.getRevision()), devId);
                      }
                   }
                   if ((compar != 0) && (compar != 2)) // sinon sdsData <= root == donnée reçue plus ancienne (ou égale) => on l'ignore
                   {
-                     logger.debug("sdsData > root or not comparable => synchro");
+                     logger.debug("root received > local or not comparable, or received not root => synchro");
                      TaskManager.addTask(new SynchroTask(sdsData, time-msg.getTimestamp()));
                   }
                }
@@ -126,7 +127,7 @@ public class MessageReceiver implements DataReceiver
          }
          finally
          {
-            taskManager.unlock();
+            taskManager.unlockIntra();
          }
       }
    }
@@ -136,7 +137,7 @@ public class MessageReceiver implements DataReceiver
       String value = null;
       if (SendTask.isConnected())
       {
-         taskManager.lock();
+         boolean largest = taskManager.lock();
          try
          {
             DirectoryImpl root = (DirectoryImpl)HomeSharedDataImpl.getRootDirectory();
@@ -168,7 +169,7 @@ public class MessageReceiver implements DataReceiver
          }
          finally
          {
-            taskManager.unlock();
+            taskManager.unlock(largest);
          }
       }
       return value;
@@ -179,7 +180,7 @@ public class MessageReceiver implements DataReceiver
       boolean res = false;
       if (SendTask.isConnected())
       {
-         taskManager.lock();
+         boolean largest = taskManager.lock();
          try
          {
             DirectoryImpl root = (DirectoryImpl)HomeSharedDataImpl.getRootDirectory();
@@ -194,7 +195,7 @@ public class MessageReceiver implements DataReceiver
          }
          finally
          {
-            taskManager.unlock();
+            taskManager.unlock(largest);
          }
       }
       return res;

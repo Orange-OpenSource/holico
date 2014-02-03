@@ -37,8 +37,6 @@ package com.francetelecom.rd.hlc.impl;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Hashtable;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -59,6 +57,10 @@ import com.francetelecom.rd.hlc.RuleDefinitionsListener;
 import com.francetelecom.rd.sds.Data;
 import com.francetelecom.rd.sds.DataAccessException;
 import com.francetelecom.rd.sds.Directory;
+import com.francetelecom.rd.sds.DataChangeListener;
+import com.francetelecom.rd.sds.DataEvent;
+import com.francetelecom.rd.sds.HomeSharedData;
+import com.francetelecom.rd.sds.Parameter;
 
 /**
  * 
@@ -86,24 +88,18 @@ public class HlcConnectorImpl implements HlcConnector {
 	 */
 	protected static final int MAX_CHECK_DELAY = 60;
 
+   protected static final String RULES_PATH = HomeBusPathDefinitions.CONFIG + "." + HomeBusPathDefinitions.RULE;
+   protected static final String NODES_PATH = HomeBusPathDefinitions.DISCOVERY + "." + HomeBusPathDefinitions.NODE;
+
 	private final Logger logger = LoggerFactory
 			.getLogger(HlcConnectorImpl.class.getName());
 
-	// TODO : remove sds adapter once the corresponding functionnalities have
-	// been implemented in SDS
-	final private SdsAdapter sdsAdapter;
-
 	/** Root of the Home state tree. */
 	final private Directory hsRoot;
+   final private HomeSharedData hsData;
 
 	/** Node this connector have been given for. */
 	final private NodeImpl node;
-
-	/** Listeners for Node arrival and departure. */
-	private NodeDiscoveryListener[] nodesListeners;
-
-	/** Listeners for Rule creation and suppression. */
-	private RuleDefinitionsListener[] rulesListeners;
 
 	/**
 	 * map <ruleid, condition resource listener>
@@ -111,14 +107,14 @@ public class HlcConnectorImpl implements HlcConnector {
 	 * condition resource listener kept for the condition update, 
 	 * 		when the listener has to be replaced because of new condition parameters  
 	 */
-	private Hashtable<String, SdsAdapterListener> listServiceForRuleInitialized;
+	private Hashtable<String, DataChangeListener> listServiceForRuleInitialized  = new Hashtable<String, DataChangeListener>();
 
 	/**
 	 * map <ruleid, resource path>
 	 * used when we need to remove a resource listener, 
 	 * because the rule's condition has changed
 	 */
-	private Hashtable<String, String> listResourcePathForRuleListened;
+	private Hashtable<String, String> listResourcePathForRuleListened = new Hashtable<String, String>();
 
 	/** 
 	 * Timer for periodic Nodes availability check.
@@ -127,116 +123,111 @@ public class HlcConnectorImpl implements HlcConnector {
 
 	// ==============================================================================
 
-	public HlcConnectorImpl(final NodeImpl node, SdsAdapter sdsAdapter) {
-
-		this.sdsAdapter = sdsAdapter;
+	public HlcConnectorImpl(final NodeImpl node, HomeSharedData hsData)
+	{
 		this.node = node;
-		this.hsRoot = sdsAdapter.getRoot();
-		this.listServiceForRuleInitialized = new Hashtable<String, SdsAdapterListener>();
-		this.listResourcePathForRuleListened = new Hashtable<String, String>();
+      this.hsData = hsData;
+		this.hsRoot = hsData.getRootDirectory(false, null, null);
 
-		// Initialize NodeListeners list.
-		this.nodesListeners = new NodeDiscoveryListener[0];
-		// Initialize RulesListeners list.
-		this.rulesListeners = new RuleDefinitionsListener[0];
-
-		// Subscribe to rules event.
-		final String rulesPath = HomeBusPathDefinitions.CONFIG + "."
-				+ HomeBusPathDefinitions.RULE;
-		this.sdsAdapter.addSdsAdapterListener(rulesPath,
-				new SdsAdapterListener() {
-
-			public void onResourceArrived(Resource resource) {
-
-				final String rulesPath = HomeBusPathDefinitions.CONFIG
-						+ "." + HomeBusPathDefinitions.RULE;
-
-				// We have a listener on HLC.Config.Rule, but all event
-				// on this branch will be notified => we have to check
-				// if the notif fired on a Rule and not a child.
-				if (resource.getParentPath().equals(rulesPath)) {
-
-					try {
-						final Rule rule = getRule(resource.getName());
-						//logger.info("---- onResourceArrived calls initServiceForRule");
-						initializeServiceForRule(rule);
-					} catch (HomeBusException e) {
-						logger.error("Exception on rule registration ",
-								e);
-					} catch (IllegalArgumentException e) {
-						logger.error("Exception on rule registration ",
-								e);
-					}
-				}
-			}
-
-			public void onResourceChanged(Resource resource) {
-				// CBE
-				// We have a listener on HLC.Config.Rule
-				final String rulesPath = HomeBusPathDefinitions.CONFIG
-						+ "." + HomeBusPathDefinitions.RULE;
-				if (resource.getPath().contains(rulesPath)){
-					// modification to a parameter under root.Config.Rule
-					try {
-						int beginIndex = resource.getPath().indexOf(HomeBusPathDefinitions.CONFIG + "." 
-								+ HomeBusPathDefinitions.RULE) 
-								+ (HomeBusPathDefinitions.CONFIG + "." 
-										+ HomeBusPathDefinitions.RULE).length()
-										+ 1; // last "["
-						int endIndex = beginIndex + 40;
-						//logger.info("TEST " + resource.getPath());
-						String ruleId = resource.getPath().substring(beginIndex, endIndex);
-						final Rule rule = getRule(ruleId);
-						//logger.info("---- onResourceChanged calls initServiceForRule");
-						// call initializeServiceForRule which will decide if the 
-						// SdsListener should be updated, given the current modification
-						initializeServiceForRule(rule);
-					} catch (HomeBusException e) {
-						logger.error("Exception on rule modification ",
-								e);
-					} catch (IllegalArgumentException e) {
-						logger.error("Exception on rule modification ",
-								e);
-					}
-				}
-			}
-
-			public void onResourceLeft(Resource resource) {
-				// CBE
-				// We have a listener on HLC.Config.Rule
-				final String rulesPath = HomeBusPathDefinitions.CONFIG
-						+ "." + HomeBusPathDefinitions.RULE;
-				if (resource.getPath().contains(rulesPath)){
-					// modification to a parameter under root.Config.Rule
-					try {
-						//logger.info("---- onResourceChanged calls initServiceForRule");
-						// call initializeServiceForRule which will decide if the 
-						// SdsListener should be updated, given the current modification
-						int beginIndex = resource.getPath().indexOf(HomeBusPathDefinitions.CONFIG + "." 
-								+ HomeBusPathDefinitions.RULE) 
-								+ (HomeBusPathDefinitions.CONFIG + "." 
-										+ HomeBusPathDefinitions.RULE).length()
-										+ 1; // last "["
-						int endIndex = beginIndex + 40;
-						//logger.info("TEST " + resource.getPath());
-						String ruleId = resource.getPath().substring(beginIndex, endIndex);
-						disableServiceForRule(ruleId);
-					} catch (IllegalArgumentException e) {
-						logger.error("Exception on rule removal ",
-								e);
-					}
-				}
-			}
-		});
+      // Subscribe to rules event
+      Data ruleDir = null;
+      try
+      {
+         ruleDir = this.hsRoot.getChild(RULES_PATH);
+      }
+      catch (DataAccessException e1)
+      {
+      }
+	   try
+      {
+	      if (ruleDir == null) // Config.Rule n'est pas encore cree, on le cree
+	      {
+	         ruleDir = this.hsRoot.newData(RULES_PATH, Data.TYPE_SPE_DIR, false);
+	      }
+	      ruleDir.addDataChangeListener(new DataChangeListener()
+	      {
+	         public void dataChange(ArrayList<DataEvent> events)
+	         {
+	            if (events != null)
+	            {
+	               // On ne garde qu'une action par ruleId : (re-)activer ou desactiver
+	               Hashtable<String, Integer> ruleActions = new Hashtable<String, Integer>();
+	               for (DataEvent evt : events)
+	               {
+	                  Data src = (Data)evt.getSource();
+	                  switch(evt.getType())
+	                  {
+	                     case DataEvent.DATA_ADDED :
+	                        // We have a listener on HLC.Config.Rule, but all event
+	                        // on this branch will be notified => we have to check
+	                        // if the notif fired on a Rule and not a child.
+	                        if (src.getPathname().equals(RULES_PATH))
+	                        {
+	                           //logger.info("---- dataChange calls initServiceForRule");
+	                           ruleActions.put(evt.getPathname(), DataEvent.DATA_ADDED);
+	                        }
+	                        break;
+	                     case DataEvent.DATA_REMOVED :
+	                        // Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation
+	                        if (src.getPathname().equals(RULES_PATH))
+	                        {
+	                           //logger.info("---- dataChange calls disableServiceForRule");
+                              ruleActions.put(evt.getPathname(), DataEvent.DATA_REMOVED);
+	                        }
+	                        // else... Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation !!
+	                        break;
+	                     case DataEvent.TYPE_CHANGED :
+	                     case DataEvent.VALUE_CHANGED:
+	                        if (src.getPathname().startsWith(RULES_PATH+"[")) // Normalement, toujours vrai !
+	                        {
+	                           int beginIndex = RULES_PATH.length()+1;
+                              int endIndex = src.getPathname().indexOf(']', beginIndex);
+                              if (endIndex != -1)
+                              {
+                                 String ruleId = src.getPathname().substring(beginIndex, endIndex);
+                                 if (!ruleActions.containsKey(ruleId)) { ruleActions.put(ruleId, DataEvent.VALUE_CHANGED); }
+                              }
+	                        }
+	                        break;
+	                     default :
+	                        break;
+	                  }
+	               }
+	               try
+                  {
+                     for (String ruleId : ruleActions.keySet())
+                     {
+                        if (ruleActions.get(ruleId) == DataEvent.DATA_REMOVED)
+                        {
+                           disableServiceForRule(ruleId);
+                        }
+                        else // (ruleActions.get(ruleId) == DataEvent.DATA_ADDED) || (ruleActions.get(ruleId) == DataEvent.VALUE_CHANGED)
+                        {
+                           initializeServiceForRule(getRule(ruleId));
+                        }
+                     }
+                  }
+                  catch (IllegalArgumentException e)
+                  {
+                     logger.error("Exception on rule modification ", e);
+                  }
+                  catch (HomeBusException e)
+                  {
+                     logger.error("Exception on rule modification ", e);
+                  }
+	            }
+	         }
+	      });
+      }
+      catch (DataAccessException e)
+      {
+      }
 
 		this.periodicNodeAvailabilityTimer = new Timer();
 
 		// generate a random delay for first check
-		int delaySec = MIN_CHECK_DELAY
-				+ (int) (Math.random() * ((MAX_CHECK_DELAY - MIN_CHECK_DELAY) + 1));
-		periodicNodeAvailabilityTimer.schedule(new PeriodicAvailabilityCheckTask(), 
-				delaySec * 1000);
-
+		int delaySec = MIN_CHECK_DELAY + (int) (Math.random() * ((MAX_CHECK_DELAY - MIN_CHECK_DELAY) + 1));
+		periodicNodeAvailabilityTimer.schedule(new PeriodicAvailabilityCheckTask(), delaySec * 1000);
 	}
 
 	// ==============================================================================
@@ -360,133 +351,135 @@ public class HlcConnectorImpl implements HlcConnector {
 	/**
 	 * see {@link HlcConnector#addNodeDiscoveryListener(NodeDiscoveryListener)}
 	 */
-	public void addNodeDiscoveryListener(NodeDiscoveryListener listener) {
+	public void addNodeDiscoveryListener(final NodeDiscoveryListener listener) {
 
 		if (listener == null) {
 			throw new IllegalArgumentException("Listener cannot be null");
 		}
 
-		// add the listener to the list of listeners
-		int length = this.nodesListeners.length;
-		NodeDiscoveryListener newListeners[] = new NodeDiscoveryListener[length + 1];
-		System.arraycopy(this.nodesListeners, 0, newListeners, 0, length);
-		newListeners[length] = listener;
-		this.nodesListeners = newListeners;
+      // add listener on HLC.Discovery.Node
+      try
+      {
+         hsRoot.getChild(NODES_PATH).addDataChangeListener(new DataChangeListener()
+         {
+            public void dataChange(ArrayList<DataEvent> events)
+            {
+               if (events != null)
+               {
+                  // On ne garde qu'une action par nodeId
+                  Hashtable<String, Integer> nodeActions = new Hashtable<String, Integer>();
+                  for (DataEvent evt : events)
+                  {
+                     Data src = (Data)evt.getSource();
+                     switch(evt.getType())
+                     {
+                        case DataEvent.DATA_ADDED :
+                           // We have a listener on HLC.Config.Node, but all event
+                           // on this branch will be notified => we have to check
+                           // if the notif fired on a Node and not a child.
+                           if (src.getPathname().equals(NODES_PATH))
+                           {
+                              //logger.info("---- dataChange calls onNodeArrival");
+                              nodeActions.put(evt.getPathname(), DataEvent.DATA_ADDED);
+                           }
+                           break;
+                        case DataEvent.DATA_REMOVED :
+                           // Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation
+                           if (src.getPathname().equals(NODES_PATH))
+                           {
+                              //logger.info("---- dataChange calls onNodeRemoval");
+                              nodeActions.put(evt.getPathname(), DataEvent.DATA_REMOVED);
+                           }
+                           break;
+                        case DataEvent.TYPE_CHANGED :
+                        case DataEvent.VALUE_CHANGED:
+                           // CBE if the modification concerns the nodes Availability
+                           // if Availability == 0 => onNodeUnavailable callback
+                           // if Availability == 1 => onNodeArrival callback
+                           // if other modifications than availability => onNodeModification
 
-		if (this.nodesListeners.length == 1) {
-			final String nodesPath = HomeBusPathDefinitions.DISCOVERY + "."
-					+ HomeBusPathDefinitions.NODE;
-
-			// add listener on HLC.Discovery.Node
-			sdsAdapter.addSdsAdapterListener(nodesPath,
-					new SdsAdapterListener() {
-
-				public void onResourceLeft(Resource resource) {
-					// we have a listener on HLC.Discovery.Node, but all
-					// event
-					// on this branch will be notified => we have to
-					// check if
-					// the notif fired on a Node and not a child
-					if (resource.getParentPath().equals(nodesPath)) {
-						for (int i = 0; i < nodesListeners.length; i++) {
-							nodesListeners[i].onNodeRemoval(resource
-									.getName());
-						}
-					}
-				}
-
-				public void onResourceChanged(Resource resource) {
-					// we have a listener on HLC.Discovery.Node, but all
-					// event
-					// on this branch will be notified => we have to
-					// check if
-					// the notif fired on a Node and not a child
-
-					if (resource.getParentPath().equals(nodesPath)) {
-
-						// CBE we arrive here only if the node ID changes, which never happens normally
-						// the resource received here is a data tree ENDPOINT
-						// so, for example, if the node's name is modified
-						// the parent of the resource received is "nodeID" not the Discovery.Node path
-						// so modifications on node's children are never detected
-						// sol : verify if the receives resource endpoint is a node's endpoint
-						// implemented after the availability check below
-
-						// we are sure to be on nodes level
-						// call onNodeModification
-						for (int i = 0; i < nodesListeners.length; i++) {
-							nodesListeners[i]
-									.onNodeModification(resource
-											.getName());
-						}
-					}
-
-					// CBE if the modification concerns the nodes Availability
-					// if Availability == 0 => onNodeUnavailable callback
-					// if Availability == 1 => onNodeArrival callback
-					// if other modifications than availability => onNodeModification
-
-					if (resource.getName().equals(HomeBusPathDefinitions.NODE_AVAILABILITY)){
-						// Availability has changed
-						try {
-							if (resource.getValueAsInt() == HomeBusPathDefinitions.NODE_AVAILABILITY_AVAILABLE) {
-								// node becomes available = > onNodeArrival
-								for (int i = 0; i < nodesListeners.length; i++) {
-									nodesListeners[i]
-											.onNodeArrival(resource.getParent().getName());
-								}
-							}
-							else {
-								// node becomes unavailable => onNodeUnavailable
-								for (int i = 0; i < nodesListeners.length; i++) {
-									nodesListeners[i]
-											.onNodeUnavailable(resource.getParent().getName());
-								}
-							}
-						} catch (InvalidResourceTypeException e) {
-							logger.error("Error type of resource node.availability is not integer!" + e.getMessage());
-						}
-					}
-					else if (resource.getPath().contains(HomeBusPathDefinitions.DISCOVERY + "." 
-							+ HomeBusPathDefinitions.NODE)){
-						// other parameters than availability has changed
-						// this comparison should always be true
-						// the resource endpoint received belongs to a node
-						// => onNodeModification
-						// tricky : find the node id ? 
-						// we dont know at which level the resource is
-						int beginIndex = resource.getPath().indexOf(HomeBusPathDefinitions.DISCOVERY + "." 
-								+ HomeBusPathDefinitions.NODE) 
-								+ (HomeBusPathDefinitions.DISCOVERY + "." 
-										+ HomeBusPathDefinitions.NODE).length()
-										+ 1; // last "["
-						int endIndex = beginIndex + 40;
-						String nodeId = resource.getPath().substring(beginIndex, endIndex);
-						//if (!nodeId.contains(".")){
-						for (int i = 0; i < nodesListeners.length; i++) {
-							nodesListeners[i]
-									.onNodeModification(nodeId);
-						}
-						//}
-					}
-				}
-
-				public void onResourceArrived(Resource resource) {
-					// we have a listener on HLC.Discovery.Node, but all
-					// event
-					// on this branch will be notified => we have to
-					// check if
-					// the notif fired on a Node and not a child
-					if (resource.getParentPath().equals(nodesPath)) {
-						for (int i = 0; i < nodesListeners.length; i++) {
-							nodesListeners[i].onNodeArrival(resource
-									.getName());
-						}
-					}
-				}
-			});
-		}
-
+                           if ((src instanceof Parameter) && src.getName().equals(HomeBusPathDefinitions.NODE_AVAILABILITY))
+                           {
+                              // Availability has changed
+                              try
+                              {
+                                 String nodeId = src.getParent().getName();
+                                 // Si on a deja DATA_ADDED, on cumule l'info de dispo NODE_AVAILABILITY
+                                 int type = (nodeActions.containsKey(nodeId) ? nodeActions.get(nodeId) : 0) | ((((Parameter)src).getIntValue()+1) << 4);
+                                 nodeActions.put(nodeId, type);
+                              }
+                              catch (DataAccessException e)
+                              {
+                                 logger.error("DataAccessException : " + e.getMessage());
+                              }
+                           }
+                           else if (src.getPathname().startsWith(NODES_PATH+"[")) // Normalement, toujours vrai !
+                           {
+                              // other parameters than availability has changed
+                              // this comparison above should always be true
+                              // the resource endpoint received belongs to a node
+                              // => onNodeModification
+                              int beginIndex = NODES_PATH.length()+1;
+                              int endIndex = src.getPathname().indexOf(']', beginIndex);
+                              if (endIndex != -1)
+                              {
+                                 String nodeId = src.getPathname().substring(beginIndex, endIndex);
+                                 int type = (nodeActions.containsKey(nodeId) ? nodeActions.get(nodeId) : 0);
+                                 if ((type & 0x0F) == 0) // si on n'a pas deja un ajout ou une suppression
+                                 {
+                                    nodeActions.put(nodeId, type | DataEvent.VALUE_CHANGED);
+                                 }
+                              }
+                           }
+                           break;
+                        default :
+                           break;
+                     }
+                  }
+                  for (String nodeId : nodeActions.keySet())
+                  {
+                     int type = nodeActions.get(nodeId);
+                     int availability = (type >> 4) - 1;
+                     type &= 0x0F;
+                     if (type == DataEvent.DATA_ADDED)
+                     {
+                        listener.onNodeArrival(nodeId);
+                        if (availability == HomeBusPathDefinitions.NODE_AVAILABILITY_NOTAVAILABLE)
+                        {
+                           // after arrival, node becomes unavailable => onNodeUnavailable
+                           listener.onNodeUnavailable(nodeId);
+                        }
+                     }
+                     else if (type == DataEvent.DATA_REMOVED)
+                     {
+                        listener.onNodeRemoval(nodeId);
+                     }
+                     else if (availability == HomeBusPathDefinitions.NODE_AVAILABILITY_AVAILABLE)
+                     {
+                        // node becomes available => onNodeArrival
+                        listener.onNodeArrival(nodeId);
+                     }
+                     else
+                     {
+                        if (type == DataEvent.VALUE_CHANGED)
+                        {
+                           listener.onNodeModification(nodeId);
+                        }
+                        if (availability == HomeBusPathDefinitions.NODE_AVAILABILITY_NOTAVAILABLE)
+                        {
+                           // node becomes unavailable => onNodeUnavailable
+                           listener.onNodeUnavailable(nodeId);
+                        }
+                     }
+                  }
+               }
+            }
+         });
+      }
+      catch (DataAccessException e)
+      {
+         logger.error("DataAccessException : " + e.getMessage());
+      }
 	}
 
 	/**
@@ -497,9 +490,7 @@ public class HlcConnectorImpl implements HlcConnector {
 		Rule[] allRules = null;
 
 		try {
-			Directory configDir = hsRoot
-					.getDirectory(HomeBusPathDefinitions.CONFIG + "."
-							+ HomeBusPathDefinitions.RULE);
+			Directory configDir = hsRoot.getDirectory(RULES_PATH);
 
 			ArrayList rulesArray = new ArrayList();
 			Data[] rules = configDir.getChildren();
@@ -664,89 +655,86 @@ public class HlcConnectorImpl implements HlcConnector {
 	 * see
 	 * {@link HlcConnector#addRuleDefinitionsListener(RuleDefinitionsListener)}
 	 */
-	public void addRuleDefinitionsListener(RuleDefinitionsListener listener) {
-		// add the listener to the list of listeners
-		int length = this.rulesListeners.length;
-		RuleDefinitionsListener newListeners[] = new RuleDefinitionsListener[length + 1];
-		System.arraycopy(this.rulesListeners, 0, newListeners, 0, length);
-		newListeners[length] = listener;
-		this.rulesListeners = newListeners;
-
-		if (this.rulesListeners.length == 1) {
-			final String rulesPath = HomeBusPathDefinitions.CONFIG + "."
-					+ HomeBusPathDefinitions.RULE;
-
-			// add listener on HLC.Config.Rule
-			sdsAdapter.addSdsAdapterListener(rulesPath,
-					new SdsAdapterListener() {
-
-				public void onResourceLeft(Resource resource) {
-					// We have a listener on HLC.Config.Rule, but all
-					// event on this branch will be notified => we have
-					// to check if the notif fired on a Rule and not a
-					// child.
-					if (resource.getParentPath().equals(rulesPath)) {
-						for (int i = 0; i < rulesListeners.length; i++) {
-							rulesListeners[i].onRuleRemoved(resource
-									.getName());
-						}
-					}
-				}
-
-				public void onResourceChanged(Resource resource) {
-					// We have a listener on HLC.Config.Rule, but all
-					// event on this branch will be notified => we have
-					// to check if the notif fired on a Rule and not a
-					// child.
-					if (resource.getParentPath().equals(rulesPath)) {
-						// CBE we arrive here only if the rule ID changes, which never happens normally
-						// the resource received here is a data tree ENDPOINT
-						// so, for example, if the rule's name is modified
-						// the parent of the resource received is "ruleID" not the Config.Rule path
-						// so modifications on node's children are never detected
-						// sol : verify if the receives resource endpoint is a rule's endpoint
-						// implemented after the availability check below
-						for (int i = 0; i < rulesListeners.length; i++) {
-							rulesListeners[i].onRuleChanged(resource
-									.getName());
-						}
-					} 
-					else if (resource.getPath().contains(HomeBusPathDefinitions.CONFIG + "." 
-							+ HomeBusPathDefinitions.RULE)){
-						// parameters under Config.Rule[id] changed
-						// this comparison should always be true
-						// the resource endpoint received belongs to a rule
-						// => on
-						// tricky : find the rule id ? 
-						// we dont know at which level the resource is
-						int beginIndex = resource.getPath().indexOf(HomeBusPathDefinitions.CONFIG + "." 
-								+ HomeBusPathDefinitions.RULE) 
-								+ (HomeBusPathDefinitions.CONFIG + "." 
-										+ HomeBusPathDefinitions.RULE).length()
-										+ 1; // last "["
-						int endIndex = beginIndex + 40; // 40 length of an id generated by tools
-						String ruleId = resource.getPath().substring(beginIndex, endIndex);
-						for (int i = 0; i < rulesListeners.length; i++) {
-							rulesListeners[i]
-									.onRuleChanged(ruleId);
-						}
-					}
-				}
-
-				public void onResourceArrived(Resource resource) {
-					// We have a listener on HLC.Config.Rule, but all
-					// event on this branch will be notified => we have
-					// to check if the notif fired on a Rule and not a
-					// child.
-					if (resource.getParentPath().equals(rulesPath)) {
-						for (int i = 0; i < rulesListeners.length; i++) {
-							rulesListeners[i].onRuleAdded(resource
-									.getName());
-						}
-					}
-				}
-			});
-		}
+	public void addRuleDefinitionsListener(final RuleDefinitionsListener listener)
+	{
+      try
+      {
+         hsRoot.getChild(RULES_PATH).addDataChangeListener(new DataChangeListener()
+         {
+            public void dataChange(ArrayList<DataEvent> events)
+            {
+               if (events != null)
+               {
+                  // On ne garde qu'une action par ruleId
+                  Hashtable<String, Integer> ruleActions = new Hashtable<String, Integer>();
+                  for (DataEvent evt : events)
+                  {
+                     Data src = (Data)evt.getSource();
+                     switch(evt.getType())
+                     {
+                        case DataEvent.DATA_ADDED :
+                           // We have a listener on HLC.Config.Rule, but all event
+                           // on this branch will be notified => we have to check
+                           // if the notif fired on a Rule and not a child.
+                           if (src.getPathname().equals(RULES_PATH))
+                           {
+                              //logger.info("---- dataChange calls onRuleAdded");
+                              ruleActions.put(evt.getPathname(), DataEvent.DATA_ADDED);
+                           }
+                           break;
+                        case DataEvent.DATA_REMOVED :
+                           // Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation
+                           if (src.getPathname().equals(RULES_PATH))
+                           {
+                              //logger.info("---- dataChange calls onRuleRemoved");
+                              ruleActions.put(evt.getPathname(), DataEvent.DATA_REMOVED);
+                           }
+                           // else... Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation !!
+                           break;
+                        case DataEvent.TYPE_CHANGED :
+                        case DataEvent.VALUE_CHANGED:
+                           if (src.getPathname().startsWith(RULES_PATH+"[")) // Normalement, toujours vrai !
+                           {
+                              int beginIndex = RULES_PATH.length()+1;
+                              int endIndex = src.getPathname().indexOf(']', beginIndex);
+                              if (endIndex != -1)
+                              {
+                                 // other parameters than availability has changed
+                                 // this comparison above should always be true
+                                 // the resource endpoint received belongs to a rule
+                                 // => onRuleChanged
+                                 String ruleId = src.getPathname().substring(beginIndex, endIndex);
+                                 if (!ruleActions.containsKey(ruleId)) { ruleActions.put(ruleId, DataEvent.VALUE_CHANGED); }
+                              }
+                           }
+                           break;
+                        default :
+                           break;
+                     }
+                  }
+                  for (String ruleId : ruleActions.keySet())
+                  {
+                     switch (ruleActions.get(ruleId))
+                     {
+                        case DataEvent.DATA_ADDED :
+                           listener.onRuleAdded(ruleId);
+                           break;
+                        case DataEvent.DATA_REMOVED :
+                           listener.onRuleRemoved(ruleId);
+                           break;
+                        default : // DataEvent.VALUE_CHANGED
+                           listener.onRuleChanged(ruleId);
+                           break;
+                     }
+                  }
+               }
+            }
+         });
+      }
+      catch (DataAccessException e)
+      {
+         logger.error("DataAccessException : " + e.getMessage());
+      }
 	}
 
 	/**
@@ -765,9 +753,7 @@ public class HlcConnectorImpl implements HlcConnector {
 			throw new IllegalArgumentException("Illegal rule with null id");
 		}
 
-		final String configRulePath = HomeBusPathDefinitions.CONFIG + "."
-				+ HomeBusPathDefinitions.RULE;
-		final String rulePath = configRulePath + "[" + rule.getId() + "]";
+		final String rulePath = RULES_PATH + "[" + rule.getId() + "]";
 
 		if (hsRoot.contains(rulePath)) {
 			// rule already exist
@@ -783,14 +769,10 @@ public class HlcConnectorImpl implements HlcConnector {
 		// create Rule structure in HLC
 		// lock HSD to be sure to commit a full rule in a
 		// single transaction
-		sdsAdapter.getHomeSharedData().lock();
+		hsData.lock();
 
 		try 
 		{
-			if (!hsRoot.contains(configRulePath)) {
-				// create Config.Rule path
-				hsRoot.newData(configRulePath, Data.TYPE_SPE_DIR, true);
-			}
 			hsRoot.newData(rulePath, Data.TYPE_GEN_DIR, true);
 			hsRoot.newData(rulePath + "."
 					+ HomeBusPathDefinitions.RULE_PERMISSION,
@@ -804,11 +786,9 @@ public class HlcConnectorImpl implements HlcConnector {
 
 			// set Rule info
 			setRuleInfo(rulePath, rule);
-
 		} 
 		catch (DataAccessException e) 
 		{
-
 			logger.error("Rule (" + rule.getId()
 					+ ") creation failed in HomeLifeContext tree");
 			throw new HomeBusException("Rule (" + rule.getId()
@@ -816,11 +796,9 @@ public class HlcConnectorImpl implements HlcConnector {
 		}
 		finally
 		{
-			sdsAdapter.getHomeSharedData().unlock();
+		   hsData.unlock();
 		}
 
-		//logger.info("---- add rule calls initServiceForRule");
-		initializeServiceForRule(rule);
 		return rule.getId();
 	}
 
@@ -880,7 +858,7 @@ public class HlcConnectorImpl implements HlcConnector {
 			// update Rule structure in HLC
 			// lock HSD to be sure to commit a full rule in a
 			// single transaction
-			sdsAdapter.getHomeSharedData().lock();
+			hsData.lock();
 
 			// set Rule info
 			try 
@@ -896,15 +874,14 @@ public class HlcConnectorImpl implements HlcConnector {
 			}
 			finally
 			{
-				sdsAdapter.getHomeSharedData().unlock();
+			   hsData.unlock();
 			}
 
 
 		} catch (DataAccessException e) {
 			throw new HomeBusException("Cannot update rule in tree");
 		}
-		logger.info("---- update rule calls initServiceForRule");
-		//initializeServiceForRule(rule);
+
 		return rule.getId();
 	}
 
@@ -974,8 +951,6 @@ public class HlcConnectorImpl implements HlcConnector {
 			throw new HomeBusException("Rule (" + ruleToRemoveId
 					+ ") deletion failed in HomeLifeContext tree");
 		}
-
-		disableServiceForRule(ruleToRemoveId);
 	}
 
 	/**
@@ -1093,7 +1068,6 @@ public class HlcConnectorImpl implements HlcConnector {
 		services.toArray(servicesArray);
 
 		return servicesArray;
-
 	}
 
 	private ResourcePublication[] getResourcePublications(Directory nodeDir)
@@ -1271,8 +1245,8 @@ public class HlcConnectorImpl implements HlcConnector {
 	 * - listResourcePathForRuleListened<ruleId, resourcePath>
 	 * @param rule
 	 */
-	private synchronized void initializeServiceForRule(final Rule rule) {
-
+	private synchronized void initializeServiceForRule(final Rule rule)
+	{
 		// CBE
 		// this might be called two times :
 		// 1. once by addRule and
@@ -1282,7 +1256,7 @@ public class HlcConnectorImpl implements HlcConnector {
 		// already initialized
 		// the check done in sdsAdapter.addSdsAdapterListener to see if the
 		// listener for the rule does not already exist
-		// will never detect the another listener for the same rule because
+		// will never detect another listener for the same rule because
 		// it does equal (==) on 2 objects SdsAdapterListener
 		// created here, so the references will never be the same, even if
 		// they are done for the same service/rule (they are created
@@ -1333,9 +1307,15 @@ public class HlcConnectorImpl implements HlcConnector {
 				//  listResourcePathForRuleListened.get(rule.getId())
 				//	+ " listener : " 
 				//	+ listServiceForRuleInitialized.get(rule.getId()).getId());
-				sdsAdapter.removeSdsAdapterListener(HomeBusPathDefinitions.HLC + "." +
-						listResourcePathForRuleListened.get(rule.getId()), // resource path
-						listServiceForRuleInitialized.get(rule.getId())); // listener for this resource path
+	         try
+	         {
+	            hsRoot.getChild(HomeBusPathDefinitions.HLC + "." + listResourcePathForRuleListened.get(rule.getId())) // resource path
+	               .removeDataChangeListener(listServiceForRuleInitialized.get(rule.getId())); // listener for this resource path
+	         }
+	         catch (DataAccessException e)
+	         {
+	            logger.error("DataAccessException : " + e.getMessage());
+	         }
 				// we remove listener and resource path because will be added below
 				listResourcePathForRuleListened.remove(rule.getId());
 				listServiceForRuleInitialized.remove(rule.getId());
@@ -1349,42 +1329,43 @@ public class HlcConnectorImpl implements HlcConnector {
 			// 4. memorize the listener in listServiceForRuleInitialized
 
 			// 1.
-			SdsAdapterListener conditionResourceListener = new SdsAdapterListener() {
-				public void onResourceLeft(Resource resource) {
-					perfomAction();
-				}
-				public void onResourceChanged(Resource resource) {
-					perfomAction();
-				}
-				public void onResourceArrived(Resource resource) {
-					perfomAction();
-				}
-				private void perfomAction() {
-					try {
-						if (rule.getCondition().isSatisfied()) {
-							node.getServiceCallback(
-									rule.getServiceReference())
-									.onServiceActivated(
-											rule.getArgument());
-						}
-					} catch (HomeBusException e) {
-						logger.error(
-								"Exception when performing rule action ",
-								e);
-					} catch (InvalidResourceTypeException e) {
-						logger.error(
-								"Exception when performing rule action ",
-								e);
-					}
-				}
-			};
+			DataChangeListener conditionResourceListener = new DataChangeListener()
+         {
+            public void dataChange(ArrayList<DataEvent> events)
+            {
+               try
+               {
+                  if (rule.getCondition().isSatisfied())
+                  {
+                     node.getServiceCallback(rule.getServiceReference()).onServiceActivated(rule.getArgument());
+                  }
+               }
+               catch (IllegalArgumentException e)
+               {
+                  logger.error("Exception when performing rule action ", e);
+               }
+               catch (HomeBusException e)
+               {
+                  logger.error("Exception when performing rule action ", e);
+               }
+               catch (InvalidResourceTypeException e)
+               {
+                  logger.error("Exception when performing rule action ", e);
+               }
+            }
+         };
 
 			//2.
-			sdsAdapter.addSdsAdapterListener(HomeBusPathDefinitions.HLC + "."
-					+ rule.getCondition().getResourcePath(), conditionResourceListener);
-			//logger.info("---- added new listener : " + conditionResourceListener.getId()
-			//		+ " for resource " + HomeBusPathDefinitions.HLC + "."
-			//		+ rule.getCondition().getResourcePath());
+         try
+         {
+            hsRoot.getChild(HomeBusPathDefinitions.HLC + "."+ rule.getCondition().getResourcePath())
+               .addDataChangeListener(conditionResourceListener);
+         }
+         catch (DataAccessException e)
+         {
+            logger.error("DataAccessException : " + e.getMessage());
+         }
+
 			//3. 
 			listResourcePathForRuleListened.put(rule.getId(), 
 					rule.getCondition().getResourcePath());
@@ -1400,12 +1381,20 @@ public class HlcConnectorImpl implements HlcConnector {
 	 * remove sds listeners for the resource indicated by the rule's condition
 	 * @param removedRuleId
 	 */
-	private synchronized void disableServiceForRule(String removedRuleId){
+	private synchronized void disableServiceForRule(String removedRuleId)
+	{
 		// CBE
-		if (listServiceForRuleInitialized.containsKey(removedRuleId)){
-			sdsAdapter.removeSdsAdapterListener(HomeBusPathDefinitions.HLC + "." +
-					listResourcePathForRuleListened.get(removedRuleId), // resource path
-					listServiceForRuleInitialized.get(removedRuleId)); // listener for this resource path
+      if (listServiceForRuleInitialized.containsKey(removedRuleId))
+      {
+         try
+         {
+            hsRoot.getChild(HomeBusPathDefinitions.HLC + "." + listResourcePathForRuleListened.get(removedRuleId)) // resource path
+               .removeDataChangeListener(listServiceForRuleInitialized.get(removedRuleId)); // listener for this resource path
+         }
+         catch (DataAccessException e)
+         {
+            logger.error("DataAccessException : " + e.getMessage());
+         }
 			// we remove listener and resource path 
 			listResourcePathForRuleListened.remove(removedRuleId);
 			listServiceForRuleInitialized.remove(removedRuleId);

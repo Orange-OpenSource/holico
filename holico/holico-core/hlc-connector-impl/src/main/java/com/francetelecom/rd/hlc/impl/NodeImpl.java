@@ -54,6 +54,7 @@ import com.francetelecom.rd.hlc.ResourcePublication;
 import com.francetelecom.rd.sds.Data;
 import com.francetelecom.rd.sds.DataAccessException;
 import com.francetelecom.rd.sds.Directory;
+import com.francetelecom.rd.sds.HomeSharedData;
 
 /**
  * 
@@ -84,10 +85,9 @@ public class NodeImpl implements Node {
 	private boolean isPublishedOnHomeBus;
 
 	/**
-	 * SDS data tree adapter. TODO : the adapter should be removed once the
-	 * corresponding functionnalities have been integrated into SDS.
+	 * HomeSharedData
 	 */
-	private final SdsAdapter sdsAdapter;
+	private final HomeSharedData hsData;
 
 	/**
 	 * Root of the SDS data tree
@@ -160,12 +160,12 @@ public class NodeImpl implements Node {
 	 * @param nodeId
 	 */
 	protected NodeImpl(String nodeId, String deviceId, String name,
-			SdsAdapter sdsAdapter) {
+	      HomeSharedData hsData) {
 		this.nodeId = nodeId;
 		this.deviceId = deviceId;
 		this.name = name;
-		this.sdsAdapter = sdsAdapter;
-		this.hsRoot = sdsAdapter.getRoot();
+		this.hsData = hsData;
+		this.hsRoot = hsData.getRootDirectory(false, null, null);
 		this.nodeServices = new NodeService[0];
 		this.resourcePublications = new ResourcePublication[0];
 		this.isPublishedOnHomeBus = false;
@@ -335,7 +335,7 @@ public class NodeImpl implements Node {
 
 		// lock HSD to be sure to commit a full node in a
 		// single transaction
-		sdsAdapter.getHomeSharedData().lock();
+		hsData.lock();
 
 		try 
 		{
@@ -480,11 +480,11 @@ public class NodeImpl implements Node {
 		}
 		finally
 		{
-			sdsAdapter.getHomeSharedData().unlock();
+			hsData.unlock();
 		}
 
 		isPublishedOnHomeBus = true;
-		connector = new HlcConnectorImpl(this, sdsAdapter);
+		connector = new HlcConnectorImpl(this, hsData);
 
 		return true;
 	}
@@ -522,7 +522,7 @@ public class NodeImpl implements Node {
 		}
 		isPublishedOnHomeBus = false;
 		// CBE : will no longer listen to sds events of data change
-		sdsAdapter.removeListeners();
+		// TODO
 		return true;
 	}
 
@@ -1025,7 +1025,7 @@ public class NodeImpl implements Node {
 
 		// lock HSD to be sure to commit a full publication in a
 		// single transaction
-		sdsAdapter.getHomeSharedData().lock();
+		hsData.lock();
 
 		try 
 		{
@@ -1111,7 +1111,7 @@ public class NodeImpl implements Node {
 		}
 		finally
 		{
-			sdsAdapter.getHomeSharedData().unlock();
+			hsData.unlock();
 		}
 	}
 
@@ -1141,7 +1141,7 @@ public class NodeImpl implements Node {
 
 		// lock HSD to be sure to commit a full service in a
 		// single transaction
-		sdsAdapter.getHomeSharedData().lock();
+		hsData.lock();
 
 		try 
 		{
@@ -1190,7 +1190,7 @@ public class NodeImpl implements Node {
 		}
 		finally
 		{
-			sdsAdapter.getHomeSharedData().unlock();
+			hsData.unlock();
 		}
 	}
 

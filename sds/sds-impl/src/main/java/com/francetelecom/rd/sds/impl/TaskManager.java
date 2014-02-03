@@ -59,6 +59,7 @@ class TaskManager extends Thread
    // ---------------------------------------------------------------------
 
    private static final long TRANSITION_TIME = 1000; // 1 second
+   private static final long RESPONSE_DELAY = 100; // 100 ms
    private static final int NB_TASKS_MAX = 200; // 20 tasks max
 
    //private static int discoveryRepeat = 2; // Nb de répétitions du 1er send pour fiabiliser la découverte
@@ -75,11 +76,13 @@ class TaskManager extends Thread
    private boolean alive = true;
    private long timeout = 0;
 
-   private ArrayList pendingRequests = new ArrayList(); // contient à la fois des ResponseToRequestForDataTask et des SendTask
+   private ArrayList pendingRequests = new ArrayList(); // contient à la fois des RequestToRespondTask et des SendTask
    private SendTask rootUpdateSent = null;
    private ArrayList expectedPeersAck = new ArrayList(); // liste des devices dont on attend un ACK sur la dernière maj locale envoyée rootUpdateSent
 
    private static HashMap connectedPeers = new HashMap();
+
+   private boolean iAmTheResponder = true;
 
    // ---------------------------------------------------------------------
 
@@ -97,15 +100,23 @@ class TaskManager extends Thread
    /**
     * Acquires the lock to access to the shared data structure.
     */
-   public void lockUnconditionally()
+   void lockIntra()
    {
       lock.lock();
    }
 
    /**
+    * Releases the lock.
+    */
+   void unlockIntra()
+   {
+      lock.unlock();
+   }
+
+   /**
     * Acquires the lock to access to the shared data structure.
     */
-   public void lock()
+   boolean lock()
    {
       lock.lock();
       if (!DirectoryImpl.isInStableState())
@@ -121,13 +132,15 @@ class TaskManager extends Thread
          DirectoryImpl.ensureStability();
          nbCallsWaiting--;
       }
+      return HomeSharedDataImpl.lockRevision();
    }
 
    /**
     * Releases the lock.
     */
-   public void unlock()
+   void unlock(boolean largest)
    {
+      if (largest) { HomeSharedDataImpl.unlockRevision(); }
       lock.unlock();
    }
 
@@ -139,22 +152,36 @@ class TaskManager extends Thread
       return channel;
    }
 
-   public static void addTask(Runnable t)
+   /*
+    * Ajoute une tâche (SendTask) en spécifiant le device correspondant intéressé
+    * @param devId correspondant intéressé
+    */
+   public static void addTask(Runnable t, int devId)
    {
-      instance._addTask(t);
+      instance._addTask(t, devId);
    }
 
-   private void _addTask(Runnable t)
+   public static void addTask(Runnable t)
+   {
+      instance._addTask(t, -1);
+   }
+
+   private void _addTask(Runnable t, int devId)
    {
       lock.lock();
       try
       {
          boolean toAdd = true;
-         if (t instanceof ResponseToRequestForDataTask) // si on a déjà la même requête, on ignore
+         if (t instanceof RequestToRespondTask) // si on a déjà la même requête, on ignore
          {
-            if (!_addPendingRequest((ResponseToRequestForDataTask)t))
+            if (!iAmTheResponder)
             {
-               logger.info("REPEATED REQUEST IGNORED ON '" + ((ResponseToRequestForDataTask)t).getPathname() + "'");
+               ((RequestToRespondTask) t).setTimeout(System.currentTimeMillis() + RESPONSE_DELAY);
+               toAdd = false;
+            }
+            if (!_addPendingRequest((RequestToRespondTask)t))
+            {
+               logger.info("REPEATED REQUEST IGNORED ON '" + ((RequestToRespondTask)t).getPathname() + "'");
                toAdd = false;
             }
          }
@@ -183,9 +210,36 @@ class TaskManager extends Thread
                   logger.info("REQUEST ALREADY SENT ON " + st.getPathname());
                }
             }
-            else if (st.expectedRevision == -2) // c'est un ACK à envoyer, on ignorer donc les ACK à recevoir car on a reçu une rev + récente
+            else if (st.expectedRevision == -2) // c'est un ACK à envoyer, on ignore donc les ACK à recevoir car on a reçu une rev + récente
             {
                rootUpdateSent = null;
+               if (iAmTheResponder)
+               {
+                  // Message SDS reçu de version égale ou plus récente
+                  iAmTheResponder = false;
+                  logger.info("I LOST THE ROLE OF RESPONDER");
+               }
+            }
+            else if (!iAmTheResponder)
+            {
+               if ((devId != -1) && st.getPathname().isEmpty()) // C'est un SendTask de root pour maj du dev distant
+               {
+                  // On suppose que le responder répondra, sinon on le fera (plus tard)
+                  st.setDelay(RESPONSE_DELAY);
+                  rootUpdateSent = st;
+                  Integer oDevId = Integer.valueOf(devId);
+                  if (!expectedPeersAck.contains(oDevId))
+                  {
+                     expectedPeersAck.add(oDevId);
+                  }
+                  toAdd = false;
+               }
+               else
+               {
+                  // C'est message SDS, on se déclare alors comme responder
+                  iAmTheResponder = true;
+                  logger.info("I BECOME RESPONDER");
+               }
             }
          }
          else if (t instanceof NotifyTask)
@@ -201,6 +255,12 @@ class TaskManager extends Thread
                   break;
                }
             }
+         }
+         else if (iAmTheResponder)
+         {
+            // SynchroTask i.e. message SDS reçu
+            iAmTheResponder = false;
+            logger.info("I LOST THE ROLE OF RESPONDER");
          }
          if (toAdd)
          {
@@ -274,7 +334,7 @@ class TaskManager extends Thread
                            level = 1;
                         }
                      }
-                     else // SynchroTask or ResponseToRequestForDataTask. Priorité 1
+                     else // SynchroTask or RequestToRespondTask. Priorité 1
                      {
                         iTask = i;
                         level = 3;
@@ -307,14 +367,15 @@ class TaskManager extends Thread
             if ((toRun == null) && !toSignal)
             {
                // on recherche les éventuelles retransmissions nécessaires (possibles en état transitoires)
+               // ou les réponses à requêtes différées
                long now = System.currentTimeMillis();
                Iterator it = pendingRequests.iterator();
                while (it.hasNext())
                {
                   ExpectedData req = (ExpectedData)it.next();
-                  if ((req instanceof SendTask) && (now >= ((SendTask)req).getTimeout()))
+                  if (now >= req.getTimeout())
                   {
-                     toRun = (SendTask)req;
+                     toRun = (Runnable)req;
                      break;
                   }
                }
@@ -367,7 +428,13 @@ class TaskManager extends Thread
                   DirectoryImpl.ensureStability(); // si on est en état transitoire alors on force le passage en état stable
                   if (tasks.isEmpty()) // faux, à moins que la sortie d'état transitoire n'est ajouté une NotifyTask
                   {
-                     waitTime = SendTask.RETRANSMISSION_DELAY;
+                     boolean responsePending = false;
+                     Iterator it = pendingRequests.iterator();
+                     while (!responsePending && it.hasNext()) // On recherche si une réponse est attendue auquel cas le délai est plus court
+                     {
+                        responsePending = (it.next() instanceof RequestToRespondTask);
+                     }
+                     waitTime = (responsePending ? RESPONSE_DELAY : SendTask.RETRANSMISSION_DELAY);
                   }
                }
                if (waitTime > 0)
@@ -416,17 +483,17 @@ class TaskManager extends Thread
                   if (toAdd) { it.remove(); } // 1 seul SendTask à la fois
                   break;
                }
-               else // (req instanceof ResponseToRequestForDataTask)
+               else // (req instanceof RequestToRespondTask)
                {
                   if (found) { it.remove(); } // SendTask remplace ResponseToRequest sur même rev (on ne saurait répondre)
                   found = false;
                }
             }
-            else // (newReq instanceof ResponseToRequestForDataTask)
+            else // (newReq instanceof RequestToRespondTask)
             {
                if (found)
                {
-                  toAdd = false; // si (req instanceof SendTask), on laisse tomber la requête ; si (req instanceof ResponseToRequestForDataTask), elle est déjà enregistrée
+                  toAdd = false; // si (req instanceof SendTask), on laisse tomber la requête ; si (req instanceof RequestToRespondTask), elle est déjà enregistrée
                   break;
                }
             }

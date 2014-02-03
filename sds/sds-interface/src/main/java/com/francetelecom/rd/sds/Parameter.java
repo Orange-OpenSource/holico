@@ -46,6 +46,21 @@ public interface Parameter extends Data
    public Object getValue();
 
    /**
+    * @return Returns the int value.
+    */
+   public int getIntValue() throws DataAccessException;
+
+   /**
+    * @return Returns the boolean value.
+    */
+   public boolean getBooleanValue() throws DataAccessException;
+
+   /**
+    * @return Returns the string alue.
+    */
+   public String getStringValue() throws DataAccessException;
+
+   /**
     * @param value The value to set.
     */
    public void setValue(Object value) throws DataAccessException;

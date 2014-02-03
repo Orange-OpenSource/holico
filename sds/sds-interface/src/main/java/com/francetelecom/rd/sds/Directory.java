@@ -95,6 +95,15 @@ public interface Directory extends Data
    public void setParameterValue(String pathname, Object val) throws DataAccessException, NumberFormatException;
 
    /**
+    * Marks the data as modified.
+    * 
+    * @param pathname data name
+    *  
+    * @throws DataAccessException
+    */
+   public void touch(String pathname) throws DataAccessException;
+
+   /**
     * Returns true if the named data can be accessed from this directory.
     * 
     * @param pathname pathname of a searched data.
@@ -185,11 +194,11 @@ public interface Directory extends Data
     *  
     * @param pathname name of the monitored parameter.
     * 
-    * @param listener the ValueChangeListener
+    * @param listener the DataChangeListener
     * 
     * @throws DataAccessException
     */
-   public void addValueChangeListener(String pathname, ValueChangeListener listener) throws DataAccessException;
+   public void addValueChangeListener(String pathname, DataChangeListener listener) throws DataAccessException;
 
    /**
     * Removes the listener previously specified.
@@ -200,5 +209,5 @@ public interface Directory extends Data
     * 
     * @throws DataAccessException
     */
-   public void removeValueChangeListener(String pathname, ValueChangeListener listener) throws DataAccessException;
+   public void removeValueChangeListener(String pathname, DataChangeListener listener) throws DataAccessException;
 }

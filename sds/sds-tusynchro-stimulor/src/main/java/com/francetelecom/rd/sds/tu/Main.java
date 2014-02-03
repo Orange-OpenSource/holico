@@ -86,7 +86,7 @@ public class Main {
 		hsd = HomeSharedDataImpl.getInstance();
 		assert (hsd != null);
 
-		root = hsd.getRootDirectory(true, null, sdsId);
+		root = hsd.getRootDirectory(true, null, null);
 		assert (root != null);
 	}
 

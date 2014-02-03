@@ -42,19 +42,20 @@ import com.francetelecom.rd.sds.DataAccessException;
  * @author goul5436
  *
  */
-class ResponseToRequestForDataTask implements Runnable, ExpectedData
+class RequestToRespondTask implements Runnable, ExpectedData
 {
    // ---------------------------------------------------------------------
    // init logger
 
    private static final Logger logger = LoggerFactory
-         .getLogger(ResponseToRequestForDataTask.class.getName());
+         .getLogger(RequestToRespondTask.class.getName());
 
    // ---------------------------------------------------------------------
    
    private String pathname = null;
    private int expectedRevision = 0;
    private int floorRevision = 0;
+   private long timeout = 0;
 
    // ---------------------------------------------------------------------
 
@@ -75,9 +76,25 @@ class ResponseToRequestForDataTask implements Runnable, ExpectedData
    }
 
    /**
+    * @return the timeout to respond
+    */
+   public long getTimeout()
+   {
+      return timeout;
+   }
+
+   /**
+    * @return the  timeout to respond
+    */
+   public void setTimeout(long timeout)
+   {
+      this.timeout = timeout;
+   }
+
+   /**
     * @param data
     */
-   public ResponseToRequestForDataTask(String pathname, int expectedRev, int floorRev)
+   public RequestToRespondTask(String pathname, int expectedRev, int floorRev)
    {
       this.pathname = (pathname == null ? "" : pathname);
       this.expectedRevision = expectedRev;

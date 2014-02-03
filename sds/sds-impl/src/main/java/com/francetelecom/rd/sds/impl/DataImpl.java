@@ -56,6 +56,10 @@ public abstract class DataImpl implements Data
    static final int REVERSE_FLAG   = 0x00000080;
    static final int UPWARD_MASK    = CMP_MASK | QUESTION_FLAG | MODIFIED_FLAG | PENDING_FLAG; // flags transmis au parent
 
+   static final char PATH_SEPARATOR = '.';
+   static final char LEFT_BRACKET_SEPARATOR = '[';
+   static final char RIGHT_BRACKET_SEPARATOR = ']';
+
    protected static TaskManager taskManager = TaskManager.getInstance();
 
    protected int type = TYPE_PARAM;
@@ -70,7 +74,7 @@ public abstract class DataImpl implements Data
    protected boolean persistent = true; // cas particulier : on garde la valeur mais quand on y accède, on envoie systématiquement pour savoir s'il y a des maj. En l'absence de réponse (ex: en mode d�connect�), on utilise la valeur qu'on a
    private boolean broadcasted = false; // obligatoire pour les persistents
    private boolean lazyStorage = false; // ça dépend de l'équipement : certains mettront en lazy tout ce qui est distant... mais ça peut être plus élaboré que ça... dépendre du volume...
-   // par défaut, tt ce qui est distant sera lazy. Ensuite, un device pourra demandé qu'un objet soit tenu à jour.
+   // par défaut, tt ce qui est distant sera lazy. Ensuite, un device pourra demander qu'un objet soit tenu à jour.
    private boolean grouped = false;
    protected boolean local = false; // local / distant (déterminé automatiquement selon qu'il est défini localement ou ajouté par un équipement distant)
    protected DataValuer valuer = null; // pour les locaux uniquement
@@ -82,6 +86,38 @@ public abstract class DataImpl implements Data
    protected ArrayList peerPreviousRevisions = new ArrayList(); // révisions antérieures reçues
 
    private transient ArrayList listeners = null;
+   private transient ArrayList<DataEvent> eventsToNotify = null;
+
+   /*
+    * 
+    */
+   protected static int transpose(int peerRev, int[] devIds)
+   {
+      int res = peerRev;
+      if ((res > 0) && (devIds != null))
+      {
+         int peerId = peerRev >> 24;
+         if (peerId < devIds.length)
+         {
+            res = (peerRev & ~HomeSharedDataImpl.DEV_MASK) | (devIds[peerId] << 24);
+         }
+      }
+      return res;
+   }
+
+   protected void markUsedIds(boolean[] ids, int oldId)
+   {
+      int id = revision >> 24;
+      if (id == oldId) { revision &= ~HomeSharedDataImpl.DEV_MASK; id = 0; }
+      if (id < ids.length) { ids[id] = true; }
+      for (int i=0; i<previousRevisions.size(); i++)
+      {
+         int prev = ((Integer)previousRevisions.get(i)).intValue();
+         id = prev >> 24;
+         if (id == oldId) { previousRevisions.set(i, new Integer(prev & ~HomeSharedDataImpl.DEV_MASK)); id = 0; }
+         if (id < ids.length) { ids[id] = true; }
+      }
+   }
 
    /*
     * @return Result of the comparison :
@@ -307,15 +343,15 @@ public abstract class DataImpl implements Data
          int e = -1;
          do
          {
-            int j = pathname.indexOf('.', i+1);
-            int k = pathname.indexOf('[', i+1);
+            int j = pathname.indexOf(PATH_SEPARATOR, i+1);
+            int k = pathname.indexOf(LEFT_BRACKET_SEPARATOR, i+1);
             if (k > j) { j = k; }
             if (j == -1) break;
             i = j;
-            e = pathname.indexOf(']', i+1);
+            e = pathname.indexOf(RIGHT_BRACKET_SEPARATOR, i+1);
          }
          while (true);
-         // i : index du dernier '.' ou '[', e : index du dernier ']' ou -1
+         // i : index du dernier PATH_SEPARATOR ou LEFT_BRACKET_SEPARATOR, e : index du dernier RIGHT_BRACKET_SEPARATOR ou -1
          name = (i == -1 ? pathname : (e == -1 ? pathname.substring(i+1) : pathname.substring(i+1, e)));
       }
       return name;
@@ -335,7 +371,7 @@ public abstract class DataImpl implements Data
          else
          {
             String parentpath = parent.getPathname();
-            pathname = (((parentpath == null) || parentpath.isEmpty()) ? name : parentpath + (parent.getType() == TYPE_SPE_DIR ? "[" + name + "]" : "." + name));
+            pathname = (((parentpath == null) || parentpath.isEmpty()) ? name : parentpath + (parent.getType() == TYPE_SPE_DIR ? LEFT_BRACKET_SEPARATOR + name + RIGHT_BRACKET_SEPARATOR : PATH_SEPARATOR + name));
          }
       }
       return pathname;
@@ -349,9 +385,9 @@ public abstract class DataImpl implements Data
       if ((parent == null) && original && (pathname != null) && !pathname.isEmpty() && (getName() != null)) // à la racine parent = null
       {
          int i = pathname.length() - name.length() - 1;
-         if (!pathname.endsWith("."+name))
+         if (!pathname.endsWith(PATH_SEPARATOR+name))
          {
-            i = (pathname.endsWith("[" + name + "]") ? i-1 : -1);
+            i = (pathname.endsWith(LEFT_BRACKET_SEPARATOR + name + RIGHT_BRACKET_SEPARATOR) ? i-1 : -1);
          }
          parent = (DirectoryImpl)HomeSharedDataImpl.getRootDirectory();
          if (i != -1)
@@ -398,9 +434,9 @@ public abstract class DataImpl implements Data
     * Assign new revision and timestamp.
     *
     */
-   public void setNewRevision(boolean commited)
+   public void setNewRevision(DataEvent event)
    {
-      _setNewRevision(HomeSharedDataImpl.newLocalRevision(commited), System.currentTimeMillis());
+      _setNewRevision(HomeSharedDataImpl.newRevision(), System.currentTimeMillis(), event);
    }
 
    /**
@@ -409,7 +445,7 @@ public abstract class DataImpl implements Data
     * Set the new revision provided and notify.
     *
     */
-   protected void _setNewRevision(int newRev, long time)
+   private void _setNewRevision(int newRev, long time, DataEvent event)
    {
       if (newRev != revision) // pour éviter de répéter le set
       {
@@ -422,16 +458,21 @@ public abstract class DataImpl implements Data
          }
          revision = newRev;
          timestamp = time;
-         _notifyChange();
-         if (getParent() != null)
-         {
-            parent._setNewRevision(newRev, time);
-         }
       }
-      /*else // trace à surveiller !!
+      _notifyChange(event);
+      if (getParent() != null)
       {
-         System.out.println("Double setRev name="+getPathname()+" rev="+revision);
-      }*/
+         ((DataImpl)parent)._setNewRevision(newRev, time, event);
+      }
+   }
+
+   public void addDataEvent(DataEvent event)
+   {
+      _notifyChange(event);
+      if (getParent() != null)
+      {
+         parent.addDataEvent(event);
+      }
    }
 
    /**
@@ -466,7 +507,7 @@ public abstract class DataImpl implements Data
             }
          }
          timestamp = System.currentTimeMillis(); // réactualisation
-         if (value != null) { _notifyChange(); }
+         if (value != null) { _notifyChange(null); }
       }
    }
 
@@ -571,18 +612,40 @@ public abstract class DataImpl implements Data
       this.ignored = ignored;
    }
 
-   private void _notifyChange()
+   /**
+    * Marks the data as modified.
+    */
+   public void touch()
+   {
+      boolean largest = taskManager.lock();
+      try
+      {
+         setNewRevision(new DataEvent(this, DataEvent.VALUE_CHANGED, null));
+      }
+      finally
+      {
+         taskManager.unlock(largest);
+      }
+   }
+
+   private void _notifyChange(DataEvent event)
    {
       if (original)
       {
          if ((listeners != null) && !listeners.isEmpty())
          {
+            if (event != null)
+            {
+               if (eventsToNotify == null)
+               {
+                  eventsToNotify = new ArrayList<DataEvent>();
+               }
+               if (!eventsToNotify.contains(event))
+               {
+                  eventsToNotify.add(event);
+               }
+            }
             TaskManager.addTask(new NotifyTask(this));
-         }
-         if ((this == HomeSharedDataImpl.getRootDirectory())
-               && _isPossiblyNewerThan(revision, peerRevision)) // on ne renvoit pas de msg de synchro avec la même révision que celle reçue
-         {
-            TaskManager.addTask(new SendTask(null, revision-1)); // floorRevision = revision-1 pour n'envoyer qu'un diff
          }
       }
    }
@@ -594,15 +657,16 @@ public abstract class DataImpl implements Data
          Iterator it = listeners.iterator();
          while (it.hasNext())
          {
-            ValueChangeListener listener = (ValueChangeListener)it.next();
-            listener.valueChange(new EventObject(this));
+            DataChangeListener listener = (DataChangeListener)it.next();
+            listener.dataChange(eventsToNotify);
          }
       }
+      eventsToNotify = null;
    }
 
-   public void addValueChangeListener(ValueChangeListener listener)
+   public void addDataChangeListener(DataChangeListener listener)
    {
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          if (listeners == null)
@@ -616,23 +680,27 @@ public abstract class DataImpl implements Data
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
    }
 
-   public void removeValueChangeListener(ValueChangeListener listener)
+   public void removeDataChangeListener(DataChangeListener listener)
    {
-      taskManager.lock();
+      boolean largest = taskManager.lock();
       try
       {
          if (listeners != null)
          {
             listeners.remove(listener);
+            if (listeners.isEmpty())
+            {
+               eventsToNotify = null; // plus d'événements à notifier
+            }
          }
       }
       finally
       {
-         taskManager.unlock();
+         taskManager.unlock(largest);
       }
    }
 
@@ -652,7 +720,7 @@ public abstract class DataImpl implements Data
    {
       peerRevision = received.revision;
       peerPreviousRevisions = received.previousRevisions;
-      synchroState &= CMP_MASK; // on garde l'info de comparaison, raz sur le reste
+      synchroState = 1; // on garde l'info de comparaison, raz sur le reste
       _replace(received);
       if ((synchroState & PENDING_FLAG) == 0) // fait dans replace ??
       {
@@ -666,6 +734,29 @@ public abstract class DataImpl implements Data
     * @return 0 or PENDING_FLAG (synchroState initialized to 0)
     */
    protected abstract void _relocate();
+
+   /*
+    * Greffe d'une nouvelle branche ou remplacement d'une branche existante (Dir <-> Param)
+    * N.B.  S'applique uniquement à une DirectoryImpl
+    */
+   protected void graft(String key, DataImpl received)
+   {
+      received._relocate();
+      DataImpl old = (DataImpl)((HashMap)value).put(key, received);
+      if (old == null)
+      {
+         addDataEvent(new DataEvent(this, DataEvent.DATA_ADDED, key));
+      }
+      else
+      {
+         // on recopie les attributs de l'ancienne data
+         received.listeners = old.listeners;
+         received.peerRevision = old.peerRevision;
+         received.synchroState |= MODIFIED_FLAG;
+         received.addDataEvent(new DataEvent(received, DataEvent.TYPE_CHANGED, null));
+      }
+      synchroState |= (received.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
+   }
 
    /*
     * 
@@ -707,7 +798,7 @@ public abstract class DataImpl implements Data
       if (synchroState == 7) // received >< this (antagonistic)
       {
          // Choix arbitraire (mais sûr) de la révision pour laquelle le devId est < (l'autre est abandonnée)
-         synchroState = (revision < received.revision ? 2 : 1);
+         synchroState = (HomeSharedDataImpl.isPriorTo(revision >> 24, received.revision >> 24) ? 2 : 1);
       }
       if ((synchroState == 2) || (synchroState == 0))  // received < this || received == this
       {
@@ -736,7 +827,6 @@ public abstract class DataImpl implements Data
             revision = 0; // on efface pour ne pas traiter la révision actuelle comme antérieure
             previousRevisions.clear(); // id.
             _replace(received);
-            if ((synchroState & DIR_PARAM_FLAG) != 0) { received.peerRevision = peerRevision; }
             TaskManager.addTask(new SendTask(getPathname(), peerRevision, revision)); // interroge pour obtenir la valeur manquante
             synchroState |= PENDING_FLAG | REQUESTED_FLAG | REVERSE_FLAG;
             // merge à faire. On devrait recevoir la peerRevision et alors une nouvelle rev sera créée > this et received.
@@ -764,25 +854,25 @@ public abstract class DataImpl implements Data
 
    /*
     */
-   protected abstract String writeValueTo(String prefixName, DataOutputStream out, int floorRevision) throws IOException;
+   protected abstract String writeValueTo(String prefixName, DataOutputStream out, int floorRevision, int maxLevel) throws IOException;
 
-   protected String _writeTo(String prefixName, DataOutputStream out, int floorRevision) throws IOException
+   protected String _writeTo(String prefixName, DataOutputStream out, int floorRevision, int maxLevel) throws IOException
    {
       boolean isRequest = (floorRevision != 0) && ((synchroState & REQUESTED_FLAG) != 0) && (floorRevision == peerRevision);
       boolean valueToWrite = !isRequest
             && (value != null)
             && ((type == TYPE_INT) || (type == TYPE_BOOL) // on écrit systématiquement les int et bool. Ca ne mange pas de pain !
                   || ((this instanceof DirectoryImpl) && ((HashMap)value).isEmpty()) // id. Ca ne coute rien d'écrire le contenu d'un directory vide !
-                  || (_revcmp(floorRevision) == 2));          // == (this.revision > floorRevision)
+                  || ((_revcmp(floorRevision) == 2) && (maxLevel != 0)));          // == (this.revision > floorRevision)
       out.write(type);
       String nameToWrite = getPathname(); // == pathname
       if ((prefixName != null) && !prefixName.isEmpty())
       {
          String dots = "";
-         while (!pathname.startsWith(prefixName))
+         while (!pathname.startsWith(prefixName+PATH_SEPARATOR) && !pathname.startsWith(prefixName+LEFT_BRACKET_SEPARATOR))
          {
             int k= prefixName.length()-1; // >= 0
-            while ((k>0) && (prefixName.charAt(k) != '.') && (prefixName.charAt(k) != '[')) { k--; }
+            while ((k>0) && (prefixName.charAt(k) != PATH_SEPARATOR) && (prefixName.charAt(k) != LEFT_BRACKET_SEPARATOR)) { k--; }
             if (k == 0)
             {
                prefixName = "";
@@ -792,7 +882,7 @@ public abstract class DataImpl implements Data
             else
             {
                prefixName = prefixName.substring(0, k);
-               dots += ".";
+               dots += PATH_SEPARATOR;
             }
          }
          nameToWrite = dots + pathname.substring(prefixName.length());
@@ -831,7 +921,7 @@ public abstract class DataImpl implements Data
       }
       if (valueToWrite)
       {
-         prefixName = writeValueTo(prefixName, out, floorRevision);
+         prefixName = writeValueTo(prefixName, out, floorRevision, maxLevel-1);
       }
       return prefixName;
    }
@@ -841,17 +931,17 @@ public abstract class DataImpl implements Data
     * @param name Name of the data to write
     * @param floorRevision Revision threshold to write value (if 'this' revision <= floorRevision then the value is not written) 
     */
-   protected void writeTo(DataOutputStream out, int floorRevision) throws IOException
+   protected void writeTo(DataOutputStream out, int floorRevision, int maxLevel) throws IOException
    {
       if ((floorRevision == -1) // si -1, envoi des dernieres modif
        || (_revcmp(floorRevision) != 2)) // si floorRevision n'est pas inférieure à la révision courante, on envoie qd même un niveau
       {
          floorRevision = (revision == 0 ? 0 : revision-1);
       }
-      _writeTo(null, out, floorRevision);
+      _writeTo(null, out, floorRevision, maxLevel);
    }
 
-   static protected DataImpl readFrom(DataInputStream in) throws DataAccessException, IOException
+   static protected DataImpl readFrom(DataInputStream in, int[] devIds) throws DataAccessException, IOException
    {
       DataImpl data = null;
       DirectoryImpl dir = null;
@@ -864,21 +954,22 @@ public abstract class DataImpl implements Data
       {
          String nameread = in.readUTF();
          String pathname = nameread;
-         if (nameread.startsWith(".") || nameread.startsWith("["))
+         if (!nameread.isEmpty() && ((nameread.charAt(0)==PATH_SEPARATOR) || (nameread.charAt(0)==LEFT_BRACKET_SEPARATOR)))
          {
-            while (!prefixName.isEmpty() && (nameread.startsWith("..") || nameread.startsWith(".["))) // remonter prefixe d'un cran
+            while (!prefixName.isEmpty() && (nameread.length() > 1)
+                && (nameread.charAt(0)==PATH_SEPARATOR) && ((nameread.charAt(1)==PATH_SEPARATOR) || (nameread.charAt(1)==LEFT_BRACKET_SEPARATOR))) // remonter prefixe d'un cran
             {
                int k= prefixName.length()-1; // >= 0
-               while ((k>=0) && (prefixName.charAt(k) != '.') && (prefixName.charAt(k) != '[')) { k--; }
+               while ((k>0) && (prefixName.charAt(k) != PATH_SEPARATOR) && (prefixName.charAt(k) != LEFT_BRACKET_SEPARATOR)) { k--; }
                prefixName = prefixName.substring(0, k);
                nameread = nameread.substring(1);
             }
             pathname = prefixName + nameread;
          }
-         int rev = in.readInt();
+         int rev = transpose(in.readInt(), devIds);
          ArrayList prev = new ArrayList();
          int revp = 0;
-         while ((revp = in.readInt()) != 0) { prev.add(new Integer(revp)); }
+         while ((revp = in.readInt()) != 0) { prev.add(new Integer(transpose(revp, devIds))); }
          long ts = in.readLong();
          boolean valueWritten = in.readBoolean();
          if ((type != TYPE_GEN_DIR) && (type != TYPE_SPE_DIR))
@@ -897,7 +988,7 @@ public abstract class DataImpl implements Data
                String relName = pathname.substring(dirNameLen);
                if (dirType == TYPE_SPE_DIR)
                {
-                  int k = relName.indexOf(']');
+                  int k = relName.indexOf(RIGHT_BRACKET_SEPARATOR);
                   if (k >= 0)
                   {
                      relName = relName.substring(0, k) + relName.substring(k+1);
@@ -925,7 +1016,7 @@ public abstract class DataImpl implements Data
                String relName = pathname.substring(dirNameLen);
                if (dirType == TYPE_SPE_DIR)
                {
-                  int k = relName.indexOf(']');
+                  int k = relName.indexOf(RIGHT_BRACKET_SEPARATOR);
                   if (k >= 0)
                   {
                      relName = relName.substring(0, k) + relName.substring(k+1);

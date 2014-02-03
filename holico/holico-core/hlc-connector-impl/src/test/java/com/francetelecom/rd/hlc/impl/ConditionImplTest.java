@@ -59,7 +59,7 @@ public class ConditionImplTest extends TestCase {
 		System.out
 				.println(" Global setup " + ConditionImplTest.class.getName());
 
-		factory = new HomeBusFactory(deviceId);
+		factory = new HomeBusFactory(null);
 		hsRoot = factory.getHsRoot();
 		recursiveDelete(hsRoot);
 	}

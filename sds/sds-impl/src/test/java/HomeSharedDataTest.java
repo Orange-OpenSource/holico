@@ -45,9 +45,6 @@ public class HomeSharedDataTest extends TestCase {
 
 	// ==============================================================================
 
-	int deviceId = 125;
-	int badDeviceId = 135;
-
 	String fileName = "testSDS.data";
 
 	Directory hsRoot;
@@ -109,17 +106,9 @@ public class HomeSharedDataTest extends TestCase {
 
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
 
-		// create a root with a bad device id
-		hsRoot = hsd.getRootDirectory(true, null, badDeviceId);
-		assertNull(hsRoot);
-
 		// create a root with a good device id
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
-
-		// retreive the device id of the created root
-		int devId = HomeSharedDataImpl.getDeviceId();
-		assertEquals(deviceId, devId);
 	}
 	
 	// ==============================================================================
@@ -129,7 +118,7 @@ public class HomeSharedDataTest extends TestCase {
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
 
 		// create a root with a good device id
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
 
 		// is the root recoverable ?
@@ -144,7 +133,7 @@ public class HomeSharedDataTest extends TestCase {
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
 
 		// create a root with a good device id
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
 
 		// save root in file
@@ -160,7 +149,7 @@ public class HomeSharedDataTest extends TestCase {
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
 
 		// create a root with a good device id
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
 
 		// save root in file
@@ -173,12 +162,8 @@ public class HomeSharedDataTest extends TestCase {
 		assertNull(hsRoot);
 
 		// load the root from file, use a new device id
-		hsRoot = hsd.getRootDirectory(false, fileName, deviceId+1);
+		hsRoot = hsd.getRootDirectory(false, fileName, null);
 		assertNotNull(hsRoot);
-		
-		// is the device id corresponds to the first one ?
-		int devId = HomeSharedDataImpl.getDeviceId();
-		assertEquals(deviceId, devId);
 	}
 
 	// ==============================================================================

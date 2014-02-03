@@ -41,7 +41,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.sql.Timestamp;
-import java.util.EventObject;
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.logging.LogManager;
@@ -56,7 +56,8 @@ import com.francetelecom.rd.sds.Data;
 import com.francetelecom.rd.sds.DataAccessException;
 import com.francetelecom.rd.sds.Directory;
 import com.francetelecom.rd.sds.Parameter;
-import com.francetelecom.rd.sds.ValueChangeListener;
+import com.francetelecom.rd.sds.DataChangeListener;
+import com.francetelecom.rd.sds.DataEvent;
 import com.francetelecom.rd.sds.impl.DirectoryImpl;
 import com.francetelecom.rd.sds.impl.HomeSharedDataImpl;
 import com.francetelecom.rd.sds.impl.SendTask;
@@ -79,7 +80,6 @@ public class SynchroTest extends TestCase {
 
 	// ==============================================================================
 
-	static int deviceId = 125;
 	static int deviceId2 = 124;
 	static String paramPath = "my_path";
 	static String dirPath = "my_dir";
@@ -95,7 +95,7 @@ public class SynchroTest extends TestCase {
 		.println(" Global setup " + SynchroTest.class.getName());
 
 		HomeSharedDataImpl hsd = HomeSharedDataImpl.getInstance();
-		hsRoot = hsd.getRootDirectory(true, null, deviceId);
+		hsRoot = hsd.getRootDirectory(true, null, null);
 		assertNotNull(hsRoot);
 	}
 
@@ -152,7 +152,7 @@ public class SynchroTest extends TestCase {
 	public void test_singleTreeSynchro() throws Exception {
 
 		// declare custom listener for test
-		class CustomListener implements ValueChangeListener{
+		class CustomListener implements DataChangeListener{
 
 			private int tuCase = 0;
 			private int tuIndex = 1;
@@ -191,7 +191,7 @@ public class SynchroTest extends TestCase {
 				nextTuTimeout.schedule(task, 10000);
 			}
 
-			public void valueChange(EventObject evt)
+			public void dataChange(ArrayList<DataEvent> events)
 			{
 				tuCase++;	
 
@@ -645,7 +645,7 @@ public class SynchroTest extends TestCase {
 		SendTask.setConnectionStatus(true);
 
 		// register to notif on root
-		hsRoot.addValueChangeListener(listener);
+		hsRoot.addDataChangeListener(listener);
 
 
 		try
@@ -667,12 +667,12 @@ public class SynchroTest extends TestCase {
 			stimulatorProcess.destroy();
 
 			// unregister to notif on root
-			hsRoot.removeValueChangeListener(listener);
+			hsRoot.removeDataChangeListener(listener);
 		}
 		catch(Exception e)
 		{      
 			// unregister to notif on root
-			hsRoot.removeValueChangeListener(listener);
+			hsRoot.removeDataChangeListener(listener);
 
 			// exception NOT expected
 			assertTrue(false);
@@ -687,7 +687,7 @@ public class SynchroTest extends TestCase {
 	public void test_twoTreesSynchro() throws Exception {
 
 		// declare custom listener for test
-		class CustomListener implements ValueChangeListener{
+		class CustomListener implements DataChangeListener{
 
 			private boolean allTuPassed = false;
 			private boolean errorOccured = false;
@@ -725,7 +725,7 @@ public class SynchroTest extends TestCase {
 				nextTuTimeout.schedule(task, 10000);
 			}
 
-			public void valueChange(EventObject evt) 
+			public void dataChange(ArrayList<DataEvent> events) 
 			{            
 				manageTimeout();
 
@@ -827,7 +827,7 @@ public class SynchroTest extends TestCase {
 		SendTask.setConnectionStatus(true);
 
 		// register to notif on root
-		hsRoot.addValueChangeListener(listener);
+		hsRoot.addDataChangeListener(listener);
 
 		// create a local tree
 		// will be syncrobnized with Stimulator one
@@ -858,12 +858,12 @@ public class SynchroTest extends TestCase {
 			stimulatorProcess.destroy();
 
 			// unregister to notif on root
-			hsRoot.removeValueChangeListener(listener);
+			hsRoot.removeDataChangeListener(listener);
 		}
 		catch(IOException e)
 		{
 			// unregister to notif on root
-			hsRoot.removeValueChangeListener(listener);
+			hsRoot.removeDataChangeListener(listener);
 
 			// exception NOT expected
 			assertTrue(false);
@@ -879,7 +879,7 @@ public class SynchroTest extends TestCase {
 	public void test_stressedUpdate() throws Exception {
 
 		// declare custom listener for test
-		class CustomListener implements ValueChangeListener{
+		class CustomListener implements DataChangeListener{
 
 			private boolean allTuPassed = false;
 			private boolean errorOccured = false;
@@ -920,7 +920,7 @@ public class SynchroTest extends TestCase {
 				nextTuTimeout.schedule(task, 10000);
 			}
 
-			public void valueChange(EventObject evt) 
+			public void dataChange(ArrayList<DataEvent> events) 
 			{    
 				long currentTimeMillis = System.currentTimeMillis();
 				
@@ -1022,7 +1022,7 @@ public class SynchroTest extends TestCase {
 		SendTask.setConnectionStatus(true);
 
 		// register to notif on root
-		hsRoot.addValueChangeListener(listener);
+		hsRoot.addDataChangeListener(listener);
 
 
 		try
@@ -1044,12 +1044,12 @@ public class SynchroTest extends TestCase {
 			stimulatorProcess.destroy();
 
 			// unregister to notif on root
-			hsRoot.removeValueChangeListener(listener);
+			hsRoot.removeDataChangeListener(listener);
 		}
 		catch(Exception e)
 		{      
 			// unregister to notif on root
-			hsRoot.removeValueChangeListener(listener);
+			hsRoot.removeDataChangeListener(listener);
 
 			// exception NOT expected
 			assertTrue(false);

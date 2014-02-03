@@ -34,6 +34,8 @@
  */
 package com.francetelecom.rd.sds;
 
+import java.util.UUID;
+
 /**
  * @author goul5436
  *
@@ -41,16 +43,16 @@ package com.francetelecom.rd.sds;
 public interface HomeSharedData
 {
    /**
-   * Loads and returns the root directory of the shared data structure.
-   * 
-   * @param forceReinit true to force the creation of an empty shared data structure
-   * @param filename to read the data
-   * @param deviceId device identifier. Only used if a new shared data structure needs to be created, in this case,
-   * the value must be between 1 and 255 (otherwise null is returned).
-   * 
-   * @return The root directory of the shared data structure.
-   */
-   public Directory getRootDirectory(boolean forceReinit, String filename, int deviceId);
+    * Loads and returns the root directory of the shared data structure.
+    * 
+    * @param forceReinit true to force the creation of an empty shared data structure
+    * @param filename to read the data
+    * @param uuid unique device identifier. If null, a new UUID is randomly created. 
+    * Remark : uuid is useful only when a new shared data structure needs to be created.
+    *
+    * @return The root directory of the shared data structure.
+    */
+   public Directory getRootDirectory(boolean forceReinit, String filename, UUID uuid);
 
    /**
     * Saves the shared data structure.
