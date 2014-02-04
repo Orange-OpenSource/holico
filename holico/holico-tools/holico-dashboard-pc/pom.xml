@@ -11,8 +11,8 @@
 	
 	<artifactId>holico-dashboard-pc</artifactId>
 	<packaging>jar</packaging>
-	<name>Holico Dashboard for PC</name>
-	
+	<name>HoLiCo Dashboard for PC</name>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.slf4j</groupId> 
@@ -24,22 +24,74 @@
 			<artifactId>slf4j-simple</artifactId> 
 			<version>${slf4j-api.version}</version> 
 		</dependency>
+        
 		<dependency>
 			<groupId>com.francetelecom.rd.holicologs</groupId>
 			<artifactId>logs-standard-impl</artifactId>
 			<version>${holico-logs.version}</version> 
-		</dependency>
-		<dependency>
-			<groupId>com.googlecode.json-simple</groupId> 
-			<artifactId>json-simple</artifactId> 
-			<version>1.1</version> 
-		</dependency>
+		</dependency>        
+
 		<dependency>
             <groupId>com.francetelecom.rd.holico</groupId>
 			<artifactId>hlc-connector-impl</artifactId> 
 			<version>${project.version}</version> 
 		</dependency>
+
+		<dependency>
+			<groupId>com.googlecode.json-simple</groupId> 
+			<artifactId>json-simple</artifactId> 
+			<version>1.1</version> 
+		</dependency>
+        
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>3.8.1</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 	
+	<build>
+	<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>${compiler.maven.plugin.version}</version>
+					<configuration>
+						<source>1.6</source>
+						<target>1.6</target>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+		<plugins>
+			<plugin>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<version>2.4</version>
+			        <configuration>
+				        <archive>
+				        	<manifest>
+					            <mainClass>com.francetelecom.rd.dashboard.pc.DashboardPC</mainClass>
+					          </manifest>
+				        </archive>
+				        <descriptorRefs>
+					          <descriptorRef>jar-with-dependencies</descriptorRef>
+				        </descriptorRefs>
+				</configuration>
+				<executions>
+				    <execution>
+				      <id>make-assembly</id> <!-- this is used for inheritance merges -->
+				      <phase>package</phase> <!-- bind to the packaging phase -->
+				      <goals>
+				        <goal>single</goal>
+				      </goals>
+				    </execution>
+				</executions>
+				
+			</plugin>
+		</plugins>
+	</build>
+
 </project>
 

@@ -735,12 +735,20 @@ public class HlcConnectorImpl implements HlcConnector {
       {
          logger.error("DataAccessException : " + e.getMessage());
       }
+   }
+
+   /**
+    * see {@link HlcConnector#addRule(Rule)}
+    */
+   public String addRule(final Rule rule) throws IllegalArgumentException,
+   HomeBusException {
+      return addRule(rule, false);
 	}
 
 	/**
-	 * see {@link HlcConnector#addRule(Rule)}
+	 * see {@link HlcConnector#addRule(Rule, boolean)}
 	 */
-	public String addRule(final Rule rule) throws IllegalArgumentException,
+	public String addRule(final Rule rule, boolean overwrite) throws IllegalArgumentException,
 	HomeBusException {
 
 		// Pre-conditions
@@ -757,13 +765,27 @@ public class HlcConnectorImpl implements HlcConnector {
 
 		if (hsRoot.contains(rulePath)) {
 			// rule already exist
-			logger.error("Rule ("
-					+ rule.getId()
-					+ ") already exist. Maybe you want to call updateRule instead of addRule");
-			throw new IllegalArgumentException(
-					"Rule ("
+			if (overwrite)
+			{
+            try
+            {
+               logger.warn("Overwriting existing rule (" + rule.getId() + ")");
+               hsRoot.deleteData(rulePath);
+            }
+            catch (DataAccessException e)
+            {
+            }
+			}
+			else
+			{
+	         logger.error("Rule ("
+	               + rule.getId()
+	               + ") already exist. Maybe you want to call updateRule instead of addRule");
+			   throw new IllegalArgumentException(
+				     "Rule ("
 							+ rule.getId()
 							+ ") already exist. Maybe you want to call updateRule instead of addRule");
+			}
 		}
 
 		// create Rule structure in HLC

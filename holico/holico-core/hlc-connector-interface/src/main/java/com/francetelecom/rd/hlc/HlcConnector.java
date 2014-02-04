@@ -144,6 +144,28 @@ public interface HlcConnector {
 	public String addRule(Rule rule) throws IllegalArgumentException,
 			HomeBusException;
 
+   /**
+    * Add a Rule
+    * 
+    * @param rule
+    *            the rule to add
+    * @param overwrite
+    *            if the an existing rule can be overwritten
+    *
+    * @return the id of the new rule
+    * 
+    * @throws IllegalArgumentException
+    *             if the
+    *             <code>rule<code> parameter is not valid (null or empty id)
+    *             or if the HomeLifeContext tree already contains a rule with the same id
+    * 
+    * @throws HomeBusException
+    *             if there was an error when adding the rule in HomeLifeContext
+    *             tree
+    */
+   public String addRule(Rule rule, boolean overwrite) throws IllegalArgumentException,
+         HomeBusException;
+
 	/**
 	 * Update a Rule
 	 * 

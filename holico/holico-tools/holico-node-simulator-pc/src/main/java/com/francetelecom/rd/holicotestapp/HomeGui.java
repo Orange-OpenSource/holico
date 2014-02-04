@@ -75,7 +75,6 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 
 	// for gui
 	private JPanel contentPane;
-	private JTextField textSdsId;
 	private JTextField textNodeName;
 	private JTextField textManufacturer;
 	private JTextField textVersion;
@@ -273,92 +272,83 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 		contentPane.add(panelInit);
 		panelInit.setLayout(null);
 
-		JLabel lblSdsId = new JLabel("SDS ID (between 1 and 127)*");
-		lblSdsId.setBounds(10, 11, 206, 14);
-		panelInit.add(lblSdsId);
-
-		textSdsId = new JTextField();
-		textSdsId.setBounds(215, 11, 287, 20);
-		panelInit.add(textSdsId);
-		textSdsId.setColumns(10);
-
 		JLabel lblNodeName = new JLabel("Node name*");
-		lblNodeName.setBounds(10, 42, 206, 14);
+		lblNodeName.setBounds(10, 16, 206, 14);
 		panelInit.add(lblNodeName);
 
 		textNodeName = new JTextField();
 		textNodeName.setText("AgoraNode");
-		textNodeName.setBounds(215, 42, 287, 20);
+		textNodeName.setBounds(215, 16, 287, 20);
 		panelInit.add(textNodeName);
 		textNodeName.setColumns(10);
 
 		JLabel lblManufacturer = new JLabel("Manufacturer*");
-		lblManufacturer.setBounds(10, 73, 102, 14);
+		lblManufacturer.setBounds(10, 53, 102, 14);
 		panelInit.add(lblManufacturer);
 
 		textManufacturer = new JTextField();
 		textManufacturer.setText("Orange");
-		textManufacturer.setBounds(107, 70, 137, 20);
+		textManufacturer.setBounds(107, 50, 137, 20);
 		panelInit.add(textManufacturer);
 		textManufacturer.setColumns(10);
 
 		JLabel lblVersion = new JLabel("Version*");
-		lblVersion.setBounds(284, 73, 71, 14);
+		lblVersion.setBounds(284, 53, 71, 14);
 		panelInit.add(lblVersion);
 
 		textVersion = new JTextField();
 		textVersion.setText("1.0");
-		textVersion.setBounds(365, 73, 137, 20);
+		textVersion.setBounds(365, 50, 137, 20);
 		panelInit.add(textVersion);
 		textVersion.setColumns(10);
 
 		btnPublish = new JButton("Publish");
 		btnPublish.addActionListener(this);
-		btnPublish.setBounds(215, 166, 137, 23);
+		btnPublish.setBounds(215, 162, 137, 23);
 		panelInit.add(btnPublish);
 
 		btnUnpublish = new JButton("Unpublish");
 		btnUnpublish.addActionListener(this);
-		btnUnpublish.setBounds(365, 166, 137, 23);
+		btnUnpublish.setBounds(365, 162, 137, 23);
 		panelInit.add(btnUnpublish);
 
 		JLabel lblPublishRes = new JLabel("Publish resource*");
-		lblPublishRes.setBounds(10, 104, 129, 14);
+		lblPublishRes.setBounds(10, 92, 129, 14);
 		panelInit.add(lblPublishRes);
 
 		textPublishRes = new JTextField();
 		textPublishRes.setEditable(false);
 		textPublishRes.setText(resourceToPublishPath);
-		textPublishRes.setBounds(215, 101, 287, 20);
+		textPublishRes.setBounds(215, 89, 287, 20);
 		panelInit.add(textPublishRes);
 		textPublishRes.setColumns(10);
 
 		lblNodeStatus = new JLabel("Node status");
 		lblNodeStatus.setFont(new Font("Tahoma", Font.PLAIN, 11));
 		lblNodeStatus.setHorizontalAlignment(SwingConstants.RIGHT);
-		lblNodeStatus.setBounds(13, 170, 192, 14);
+		lblNodeStatus.setBounds(13, 166, 192, 14);
 		panelInit.add(lblNodeStatus);
-		
+
 		JLabel lblPublishResType = new JLabel("int");
 		lblPublishResType.setHorizontalAlignment(SwingConstants.RIGHT);
-		lblPublishResType.setBounds(177, 104, 32, 14);
+		lblPublishResType.setBounds(177, 92, 32, 14);
 		panelInit.add(lblPublishResType);
 		
 		lblServiceName = new JLabel("Service");
 		lblServiceName.setFont(new Font("Arial", Font.PLAIN, 8));
-		lblServiceName.setBounds(10, 135, 35, 14);
+		lblServiceName.setBounds(10, 131, 35, 14);
 		panelInit.add(lblServiceName);
 		
 		textServiceId = new JTextField();
 		textServiceId.setEditable(false);
-		textServiceId.setBounds(236, 132, 266, 20);
+		textServiceId.setBounds(236, 125, 266, 20);
 		panelInit.add(textServiceId);
 		textServiceId.setColumns(10);
 		
 		textServiceName = new JTextField();
 		textServiceName.setEditable(false);
 		textServiceName.setText(nodeServiceName);
-		textServiceName.setBounds(46, 132, 180, 20);
+		textServiceName.setBounds(46, 125, 180, 20);
 		panelInit.add(textServiceName);
 		textServiceName.setColumns(10);
 
@@ -596,16 +586,6 @@ public class HomeGui extends JFrame implements NodeDiscoveryListener, ActionList
 			}
 			// check that parameters are correctly filled in
 
-			// parameter sdsId
-			if (textSdsId.getText().isEmpty()){
-				JOptionPane.showMessageDialog(null, "SDS ID name not valid! \nPlease fill in the SDS ID.");
-				return;
-			}
-			int sdsId = Integer.parseInt(textSdsId.getText().trim());
-			if (sdsId < 1 || sdsId > 127){
-				JOptionPane.showMessageDialog(null, "SDS ID not valid! \nPlease choose a SDS ID between 1 and 127.");
-				return;
-			}
 			// parameter node name
 			String nodeName = textNodeName.getText().trim();
 			if (nodeName.isEmpty()){

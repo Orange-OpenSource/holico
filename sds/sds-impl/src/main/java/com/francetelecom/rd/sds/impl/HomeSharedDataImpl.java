@@ -117,6 +117,7 @@ public class HomeSharedDataImpl implements HomeSharedData
     */
    public Directory getRootDirectory(boolean forceReinit, String filename, UUID uuid)
    {
+      lock();
       if (forceReinit)
       {
          root = null;
@@ -206,6 +207,7 @@ public class HomeSharedDataImpl implements HomeSharedData
          }
          logger.debug("Local node UUID = "+uuid);
       }
+      unlock();
       return root;
    }
 
