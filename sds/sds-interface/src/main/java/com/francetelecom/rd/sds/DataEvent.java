@@ -13,11 +13,16 @@ public class DataEvent extends EventObject
 {
    private static final long serialVersionUID = 3184590133989861215L;
 
-   public static final int UNDEFINED       = 0;
-   public static final int DATA_ADDED      = 1;
-   public static final int DATA_REMOVED    = 2;
-   public static final int TYPE_CHANGED    = 3;
-   public static final int VALUE_CHANGED   = 4;
+   public static final int LOCAL_UNDEFINED      = 0x00;
+   public static final int LOCAL_DATA_ADDED     = 0x01;
+   public static final int LOCAL_DATA_REMOVED   = 0x02;
+   public static final int LOCAL_TYPE_CHANGED   = 0x03;
+   public static final int LOCAL_VALUE_CHANGED  = 0x04;
+   public static final int REMOTE_UNDEFINED     = 0x10;
+   public static final int REMOTE_DATA_ADDED    = 0x11;
+   public static final int REMOTE_DATA_REMOVED  = 0x12;
+   public static final int REMOTE_TYPE_CHANGED  = 0x13;
+   public static final int REMOTE_VALUE_CHANGED = 0x14;
 
    private int type;
    private String pathname; // relative pathname from source, null for VALUE_CHANGED type

@@ -646,16 +646,20 @@ public class Console extends JFrame implements DataChangeListener
                            Data src = (Data)evt.getSource();
                            switch(evt.getType())
                            {
-                              case DataEvent.DATA_ADDED :
+                              case DataEvent.LOCAL_DATA_ADDED :
+                              case DataEvent.REMOTE_DATA_ADDED :
                                  Console.log("*** Data " + evt.getPathname() + " added to " + src.getPathname());
                                  break;
-                              case DataEvent.DATA_REMOVED :
+                              case DataEvent.LOCAL_DATA_REMOVED :
+                              case DataEvent.REMOTE_DATA_REMOVED :
                                  Console.log("*** Data " + evt.getPathname() + " removed from " + src.getPathname());
                                  break;
-                              case DataEvent.TYPE_CHANGED :
+                              case DataEvent.LOCAL_TYPE_CHANGED :
+                              case DataEvent.REMOTE_TYPE_CHANGED :
                                  Console.log("*** Data " + src.getPathname() + " changed to type " + src.getType());
                                  break;
-                              case DataEvent.VALUE_CHANGED:
+                              case DataEvent.LOCAL_VALUE_CHANGED:
+                              case DataEvent.REMOTE_VALUE_CHANGED:
                                  if (src instanceof Parameter)
                                  {
                                     Console.log("*** Value changed : " + src.getPathname() + "=" + ((Parameter)src).getValue());

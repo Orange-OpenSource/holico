@@ -322,7 +322,7 @@ public class DirectoryImpl extends DataImpl implements Directory
          {
             throw new DataAccessException(DataAccessException.PATHNAME_NOT_FOUND);
          }
-         data.setNewRevision(new DataEvent(data, DataEvent.VALUE_CHANGED, null));
+         data.setNewRevision(new DataEvent(data, DataEvent.LOCAL_VALUE_CHANGED, null));
       }
       finally
       {
@@ -457,7 +457,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                   {
                      throw new DataAccessException(DataAccessException.PATHNAME_NOT_FOUND, pathname);
                   }
-                  setNewRevision(new DataEvent(this, DataEvent.DATA_REMOVED, pathname)); // le directory courant a changé
+                  setNewRevision(new DataEvent(this, DataEvent.LOCAL_DATA_REMOVED, pathname)); // le directory courant a changé
                   break;
                case 4: // new (création dans le répertoire courant)
                   if (hashMap == null)
@@ -488,7 +488,7 @@ public class DirectoryImpl extends DataImpl implements Directory
             	        	break;
                 	   }
                      hashMap.put(pathname, res);
-                     res.setNewRevision(existingDir ? new DataEvent(this, DataEvent.DATA_ADDED, pathname) : null);
+                     res.setNewRevision(existingDir ? new DataEvent(this, DataEvent.LOCAL_DATA_ADDED, pathname) : null);
                   }
                   else
                   {
@@ -563,7 +563,7 @@ public class DirectoryImpl extends DataImpl implements Directory
             {
                if (value == null) { value = new HashMap(); }
                ((HashMap)value).put(dirName, dir);
-               if (existingDir) { addDataEvent(new DataEvent(this, DataEvent.DATA_ADDED, dirName)); }
+               if (existingDir) { addDataEvent(new DataEvent(this, DataEvent.LOCAL_DATA_ADDED, dirName)); }
             }
          }
       }
@@ -964,7 +964,7 @@ public class DirectoryImpl extends DataImpl implements Directory
          if (type != received.type)
          {
             type = received.type;
-            addDataEvent(new DataEvent(this, DataEvent.TYPE_CHANGED, null));
+            addDataEvent(new DataEvent(this, DataEvent.REMOTE_TYPE_CHANGED, null));
          }
          boolean thisEmpty = (value == null) || ((HashMap)value).isEmpty();
          if ((received.value != null) && !thisEmpty)
@@ -990,7 +990,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                   break;
                }
                hashMap.remove(found);
-               addDataEvent(new DataEvent(this, DataEvent.DATA_REMOVED, found));
+               addDataEvent(new DataEvent(this, DataEvent.REMOTE_DATA_REMOVED, found));
                synchroState |= MODIFIED_FLAG;
             }
             // on synchronise tous les éléments restants
@@ -1040,7 +1040,7 @@ public class DirectoryImpl extends DataImpl implements Directory
                {
                   for (Object key : hashMap.keySet())
                   {
-                     addDataEvent(new DataEvent(this, DataEvent.DATA_ADDED, (String)key));
+                     addDataEvent(new DataEvent(this, DataEvent.REMOTE_DATA_ADDED, (String)key));
                   }
                }
                synchroState |= MODIFIED_FLAG;

@@ -157,27 +157,31 @@ public class HlcConnectorImpl implements HlcConnector {
 	                  Data src = (Data)evt.getSource();
 	                  switch(evt.getType())
 	                  {
-	                     case DataEvent.DATA_ADDED :
+                        case DataEvent.LOCAL_DATA_ADDED :
+                        case DataEvent.REMOTE_DATA_ADDED :
 	                        // We have a listener on HLC.Config.Rule, but all event
 	                        // on this branch will be notified => we have to check
 	                        // if the notif fired on a Rule and not a child.
 	                        if (src.getPathname().equals(RULES_PATH))
 	                        {
 	                           //logger.info("---- dataChange calls initServiceForRule");
-	                           ruleActions.put(evt.getPathname(), DataEvent.DATA_ADDED);
+	                           ruleActions.put(evt.getPathname(), DataEvent.LOCAL_DATA_ADDED);
 	                        }
 	                        break;
-	                     case DataEvent.DATA_REMOVED :
+                        case DataEvent.LOCAL_DATA_REMOVED :
+                        case DataEvent.REMOTE_DATA_REMOVED :
 	                        // Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation
 	                        if (src.getPathname().equals(RULES_PATH))
 	                        {
 	                           //logger.info("---- dataChange calls disableServiceForRule");
-                              ruleActions.put(evt.getPathname(), DataEvent.DATA_REMOVED);
+                              ruleActions.put(evt.getPathname(), DataEvent.LOCAL_DATA_REMOVED);
 	                        }
 	                        // else... Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation !!
 	                        break;
-	                     case DataEvent.TYPE_CHANGED :
-	                     case DataEvent.VALUE_CHANGED:
+                        case DataEvent.LOCAL_TYPE_CHANGED :
+                        case DataEvent.REMOTE_TYPE_CHANGED :
+                        case DataEvent.LOCAL_VALUE_CHANGED:
+                        case DataEvent.REMOTE_VALUE_CHANGED:
 	                        if (src.getPathname().startsWith(RULES_PATH+"[")) // Normalement, toujours vrai !
 	                        {
 	                           int beginIndex = RULES_PATH.length()+1;
@@ -185,7 +189,7 @@ public class HlcConnectorImpl implements HlcConnector {
                               if (endIndex != -1)
                               {
                                  String ruleId = src.getPathname().substring(beginIndex, endIndex);
-                                 if (!ruleActions.containsKey(ruleId)) { ruleActions.put(ruleId, DataEvent.VALUE_CHANGED); }
+                                 if (!ruleActions.containsKey(ruleId)) { ruleActions.put(ruleId, DataEvent.LOCAL_VALUE_CHANGED); }
                               }
 	                        }
 	                        break;
@@ -197,7 +201,7 @@ public class HlcConnectorImpl implements HlcConnector {
                   {
                      for (String ruleId : ruleActions.keySet())
                      {
-                        if (ruleActions.get(ruleId) == DataEvent.DATA_REMOVED)
+                        if (ruleActions.get(ruleId) == DataEvent.LOCAL_DATA_REMOVED)
                         {
                            disableServiceForRule(ruleId);
                         }
@@ -373,26 +377,30 @@ public class HlcConnectorImpl implements HlcConnector {
                      Data src = (Data)evt.getSource();
                      switch(evt.getType())
                      {
-                        case DataEvent.DATA_ADDED :
+                        case DataEvent.LOCAL_DATA_ADDED :
+                        case DataEvent.REMOTE_DATA_ADDED :
                            // We have a listener on HLC.Config.Node, but all event
                            // on this branch will be notified => we have to check
                            // if the notif fired on a Node and not a child.
                            if (src.getPathname().equals(NODES_PATH))
                            {
                               //logger.info("---- dataChange calls onNodeArrival");
-                              nodeActions.put(evt.getPathname(), DataEvent.DATA_ADDED);
+                              nodeActions.put(evt.getPathname(), DataEvent.LOCAL_DATA_ADDED);
                            }
                            break;
-                        case DataEvent.DATA_REMOVED :
+                        case DataEvent.LOCAL_DATA_REMOVED :
+                        case DataEvent.REMOTE_DATA_REMOVED :
                            // Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation
                            if (src.getPathname().equals(NODES_PATH))
                            {
                               //logger.info("---- dataChange calls onNodeRemoval");
-                              nodeActions.put(evt.getPathname(), DataEvent.DATA_REMOVED);
+                              nodeActions.put(evt.getPathname(), DataEvent.LOCAL_DATA_REMOVED);
                            }
                            break;
-                        case DataEvent.TYPE_CHANGED :
-                        case DataEvent.VALUE_CHANGED:
+                        case DataEvent.LOCAL_TYPE_CHANGED :
+                        case DataEvent.REMOTE_TYPE_CHANGED :
+                        case DataEvent.LOCAL_VALUE_CHANGED:
+                        case DataEvent.REMOTE_VALUE_CHANGED:
                            // CBE if the modification concerns the nodes Availability
                            // if Availability == 0 => onNodeUnavailable callback
                            // if Availability == 1 => onNodeArrival callback
@@ -405,7 +413,7 @@ public class HlcConnectorImpl implements HlcConnector {
                               {
                                  String nodeId = src.getParent().getName();
                                  // Si on a deja DATA_ADDED, on cumule l'info de dispo NODE_AVAILABILITY
-                                 int type = (nodeActions.containsKey(nodeId) ? nodeActions.get(nodeId) : 0) | ((((Parameter)src).getIntValue()+1) << 4);
+                                 int type = (nodeActions.containsKey(nodeId) ? nodeActions.get(nodeId) : 0) | ((((Parameter)src).getIntValue()+1) << 8);
                                  nodeActions.put(nodeId, type);
                               }
                               catch (DataAccessException e)
@@ -425,9 +433,9 @@ public class HlcConnectorImpl implements HlcConnector {
                               {
                                  String nodeId = src.getPathname().substring(beginIndex, endIndex);
                                  int type = (nodeActions.containsKey(nodeId) ? nodeActions.get(nodeId) : 0);
-                                 if ((type & 0x0F) == 0) // si on n'a pas deja un ajout ou une suppression
+                                 if ((type & 0x00FF) == 0) // si on n'a pas deja un ajout ou une suppression
                                  {
-                                    nodeActions.put(nodeId, type | DataEvent.VALUE_CHANGED);
+                                    nodeActions.put(nodeId, type | DataEvent.LOCAL_VALUE_CHANGED);
                                  }
                               }
                            }
@@ -439,9 +447,9 @@ public class HlcConnectorImpl implements HlcConnector {
                   for (String nodeId : nodeActions.keySet())
                   {
                      int type = nodeActions.get(nodeId);
-                     int availability = (type >> 4) - 1;
-                     type &= 0x0F;
-                     if (type == DataEvent.DATA_ADDED)
+                     int availability = (type >> 8) - 1;
+                     type &= 0x00FF;
+                     if (type == DataEvent.LOCAL_DATA_ADDED)
                      {
                         listener.onNodeArrival(nodeId);
                         if (availability == HomeBusPathDefinitions.NODE_AVAILABILITY_NOTAVAILABLE)
@@ -450,7 +458,7 @@ public class HlcConnectorImpl implements HlcConnector {
                            listener.onNodeUnavailable(nodeId);
                         }
                      }
-                     else if (type == DataEvent.DATA_REMOVED)
+                     else if (type == DataEvent.LOCAL_DATA_REMOVED)
                      {
                         listener.onNodeRemoval(nodeId);
                      }
@@ -461,7 +469,7 @@ public class HlcConnectorImpl implements HlcConnector {
                      }
                      else
                      {
-                        if (type == DataEvent.VALUE_CHANGED)
+                        if (type == DataEvent.LOCAL_VALUE_CHANGED)
                         {
                            listener.onNodeModification(nodeId);
                         }
@@ -672,27 +680,31 @@ public class HlcConnectorImpl implements HlcConnector {
                      Data src = (Data)evt.getSource();
                      switch(evt.getType())
                      {
-                        case DataEvent.DATA_ADDED :
+                        case DataEvent.LOCAL_DATA_ADDED :
+                        case DataEvent.REMOTE_DATA_ADDED :
                            // We have a listener on HLC.Config.Rule, but all event
                            // on this branch will be notified => we have to check
                            // if the notif fired on a Rule and not a child.
                            if (src.getPathname().equals(RULES_PATH))
                            {
                               //logger.info("---- dataChange calls onRuleAdded");
-                              ruleActions.put(evt.getPathname(), DataEvent.DATA_ADDED);
+                              ruleActions.put(evt.getPathname(), DataEvent.LOCAL_DATA_ADDED);
                            }
                            break;
-                        case DataEvent.DATA_REMOVED :
+                        case DataEvent.LOCAL_DATA_REMOVED :
+                        case DataEvent.REMOTE_DATA_REMOVED :
                            // Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation
                            if (src.getPathname().equals(RULES_PATH))
                            {
                               //logger.info("---- dataChange calls onRuleRemoved");
-                              ruleActions.put(evt.getPathname(), DataEvent.DATA_REMOVED);
+                              ruleActions.put(evt.getPathname(), DataEvent.LOCAL_DATA_REMOVED);
                            }
                            // else... Voir si on peut avoir des suppressions plus bas dans l'arbre, ce qui necessiterait plutot une reinitialisation !!
                            break;
-                        case DataEvent.TYPE_CHANGED :
-                        case DataEvent.VALUE_CHANGED:
+                        case DataEvent.LOCAL_TYPE_CHANGED :
+                        case DataEvent.REMOTE_TYPE_CHANGED :
+                        case DataEvent.LOCAL_VALUE_CHANGED:
+                        case DataEvent.REMOTE_VALUE_CHANGED:
                            if (src.getPathname().startsWith(RULES_PATH+"[")) // Normalement, toujours vrai !
                            {
                               int beginIndex = RULES_PATH.length()+1;
@@ -704,7 +716,7 @@ public class HlcConnectorImpl implements HlcConnector {
                                  // the resource endpoint received belongs to a rule
                                  // => onRuleChanged
                                  String ruleId = src.getPathname().substring(beginIndex, endIndex);
-                                 if (!ruleActions.containsKey(ruleId)) { ruleActions.put(ruleId, DataEvent.VALUE_CHANGED); }
+                                 if (!ruleActions.containsKey(ruleId)) { ruleActions.put(ruleId, DataEvent.LOCAL_VALUE_CHANGED); }
                               }
                            }
                            break;
@@ -716,10 +728,10 @@ public class HlcConnectorImpl implements HlcConnector {
                   {
                      switch (ruleActions.get(ruleId))
                      {
-                        case DataEvent.DATA_ADDED :
+                        case DataEvent.LOCAL_DATA_ADDED :
                            listener.onRuleAdded(ruleId);
                            break;
-                        case DataEvent.DATA_REMOVED :
+                        case DataEvent.LOCAL_DATA_REMOVED :
                            listener.onRuleRemoved(ruleId);
                            break;
                         default : // DataEvent.VALUE_CHANGED

@@ -194,7 +194,7 @@ public class ParameterImpl extends DataImpl implements Parameter
    {
       this.value = _convertValue(this.value, type, true);
       this.type = type;
-      setNewRevision(new DataEvent(this, DataEvent.TYPE_CHANGED, null));
+      setNewRevision(new DataEvent(this, DataEvent.LOCAL_TYPE_CHANGED, null));
    }
 
    /**
@@ -215,7 +215,7 @@ public class ParameterImpl extends DataImpl implements Parameter
    protected void setValueImpl(Object value) throws DataAccessException
    {
       this.value = _convertValue(value, type, false);
-      setNewRevision(new DataEvent(this, DataEvent.VALUE_CHANGED, null));
+      setNewRevision(new DataEvent(this, DataEvent.LOCAL_VALUE_CHANGED, null));
    }
 
    /**
@@ -289,7 +289,7 @@ public class ParameterImpl extends DataImpl implements Parameter
          if ((revision != 0) && (received.revision != revision))
          {
             synchroState |= MODIFIED_FLAG;
-            addDataEvent(new DataEvent(this, (type != received.type ? DataEvent.TYPE_CHANGED : DataEvent.VALUE_CHANGED), null));
+            addDataEvent(new DataEvent(this, (type != received.type ? DataEvent.REMOTE_TYPE_CHANGED : DataEvent.REMOTE_VALUE_CHANGED), null));
          }
          value = received.value;
          type = received.type;

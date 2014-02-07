@@ -40,6 +40,10 @@ package com.francetelecom.rd.sds;
  */
 public interface Data
 {
+   public static final char PATH_SEPARATOR = '.';
+   public static final char LEFT_BRACKET_SEPARATOR = '[';
+   public static final char RIGHT_BRACKET_SEPARATOR = ']';
+
    public static final int TYPE_PARAM   = 0;
    public static final int TYPE_INT     = 1;
 	public static final int TYPE_BOOL    = 2;
@@ -77,6 +81,11 @@ public interface Data
     * @return Returns the timestamp.
     */
    public long getTimestamp();
+
+   /**
+    * @return Returns the revision.
+    */
+   public int getRevision();
 
    /**
     * Marks the data as modified.

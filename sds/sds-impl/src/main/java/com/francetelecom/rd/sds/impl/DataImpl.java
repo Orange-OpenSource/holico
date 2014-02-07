@@ -56,10 +56,6 @@ public abstract class DataImpl implements Data
    static final int REVERSE_FLAG   = 0x00000080;
    static final int UPWARD_MASK    = CMP_MASK | QUESTION_FLAG | MODIFIED_FLAG | PENDING_FLAG; // flags transmis au parent
 
-   static final char PATH_SEPARATOR = '.';
-   static final char LEFT_BRACKET_SEPARATOR = '[';
-   static final char RIGHT_BRACKET_SEPARATOR = ']';
-
    protected static TaskManager taskManager = TaskManager.getInstance();
 
    protected int type = TYPE_PARAM;
@@ -620,7 +616,7 @@ public abstract class DataImpl implements Data
       boolean largest = taskManager.lock();
       try
       {
-         setNewRevision(new DataEvent(this, DataEvent.VALUE_CHANGED, null));
+         setNewRevision(new DataEvent(this, DataEvent.LOCAL_VALUE_CHANGED, null));
       }
       finally
       {
@@ -745,7 +741,7 @@ public abstract class DataImpl implements Data
       DataImpl old = (DataImpl)((HashMap)value).put(key, received);
       if (old == null)
       {
-         addDataEvent(new DataEvent(this, DataEvent.DATA_ADDED, key));
+         addDataEvent(new DataEvent(this, DataEvent.REMOTE_DATA_ADDED, key));
       }
       else
       {
@@ -753,7 +749,7 @@ public abstract class DataImpl implements Data
          received.listeners = old.listeners;
          received.peerRevision = old.peerRevision;
          received.synchroState |= MODIFIED_FLAG;
-         received.addDataEvent(new DataEvent(received, DataEvent.TYPE_CHANGED, null));
+         received.addDataEvent(new DataEvent(received, DataEvent.REMOTE_TYPE_CHANGED, null));
       }
       synchroState |= (received.synchroState & PENDING_FLAG) | MODIFIED_FLAG;
    }
